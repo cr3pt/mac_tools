@@ -20,7 +20,7 @@ Zestaw skryptów do **bezpiecznej, offline'owej analizy podejrzanych plików** n
 
 ```bash
 # Sklonuj repozytorium
-git clone https://github.com/TWOJ_LOGIN/macos-sandbox-toolkit
+git clone https://github.com/cr3pt/macos-sandbox-toolkit
 cd macos-sandbox-toolkit
 chmod +x *.sh
 
