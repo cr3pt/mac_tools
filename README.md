@@ -119,8 +119,8 @@ macOS (host)                              Windows VM (Parallels)
 
 ```bash
 # Sklonuj repozytorium
-git clone https://github.com/TWOJ_LOGIN/noriben-parallels-sandbox
-cd noriben-parallels-sandbox
+git clone https://github.com/cr3pt/mac_tools
+cd mac_tools
 
 # Nadaj uprawnienia
 chmod +x noriben_parallels_setup.sh
