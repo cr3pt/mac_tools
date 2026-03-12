@@ -154,8 +154,8 @@ macOS (host)                                    Windows VM (QEMU/HVF)
 
 ```bash
 # Sklonuj repozytorium
-git clone https://github.com/TWOJ_LOGIN/noriben-qemu-sandbox
-cd noriben-qemu-sandbox
+git clone https://github.com/cr3pt/mac-tools
+cd mac-tools
 
 # Nadaj uprawnienia
 chmod +x noriben_qemu_sandbox.sh
