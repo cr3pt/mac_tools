@@ -981,6 +981,24 @@ get_qemu_accel_args() {
     fi
 }
 
+
+# Sprawdz i przytnij RAM dla Apple Silicon HVF (36-bit IPA = max ~63 GB przestrzeni adresowej)
+# Bez highmem=off i przy za duzym RAM QEMU zglosci: "hvf: addressing is limited to 32 bits"
+_guard_mem_for_hvf() {
+    [[ "$HOST_ARCH" != "arm64" ]] && return
+    local mem_val mem_mb
+    mem_val="${QEMU_MEM%[GgMm]}"
+    case "${QEMU_MEM: -1}" in
+        G|g) mem_mb=$(( mem_val * 1024 )) ;;
+        M|m) mem_mb=$mem_val ;;
+        *)   mem_mb=4096 ;;
+    esac
+    if [[ $mem_mb -gt 12288 ]]; then
+        log_warn "Apple Silicon HVF 36-bit IPA: RAM $QEMU_MEM zbyt duzy, przycinamy do 12G"
+        log_warn "Zmien limit: export QEMU_MEM=8G"
+        QEMU_MEM="12G"
+    fi
+}
 # Sprawdź czy obraz QEMU istnieje
 check_qemu_disk() {
     if [[ ! -f "$QEMU_DISK" ]]; then
@@ -1044,6 +1062,14 @@ start_vm() {
     log "Uruchamianie: $qemu_bin (HVF: $HOST_ARCH)"
     log "Akcelerator: $accel_args"
 
+    # Ogranicz RAM dla Apple Silicon HVF (36-bit IPA)
+    _guard_mem_for_hvf
+
+    # Na Apple Silicon (arm64): siec jako virtio-net-device (nie PCI)
+    # Na Intel (x86_64): standardowe virtio-net-pci
+    local _net_dev
+    [[ "$HOST_ARCH" == "arm64" ]] && _net_dev="virtio-net-device" || _net_dev="virtio-net-pci"
+
     # Uruchom QEMU w tle — headless, monitor na TCP, SSH forwarded
     $qemu_bin \
         $accel_args \
@@ -1051,7 +1077,7 @@ start_vm() {
         -smp "$QEMU_SMP" \
         -drive "file=$QEMU_DISK,format=qcow2,if=virtio,cache=writeback" \
         -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${QEMU_SSH_PORT}-:22,restrict=on" \
-        -device "virtio-net-pci,netdev=net0" \
+        -device "$_net_dev,netdev=net0" \
         -monitor "tcp:127.0.0.1:${QEMU_MONITOR_PORT},server,nowait" \
         -display none \
         -daemonize \
