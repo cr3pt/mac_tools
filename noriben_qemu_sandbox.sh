@@ -46,11 +46,12 @@
 
 set -euo pipefail
 
-VERSION="3.0.0"
+VERSION="3.1.0"
 
 # ─── Kolory ───────────────────────────────────────────────────
 RED='\033[0;31m'; YELLOW='\033[1;33m'; GREEN='\033[0;32m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; DIM='\033[2m'; RESET='\033[0m'
+MAGENTA='\033[0;35m'
 
 # ─── Konfiguracja QEMU ────────────────────────────────────────
 # Ścieżka do obrazu qcow2 Windows (USTAW PRZED UŻYCIEM)
@@ -96,6 +97,7 @@ ARCHIVE_PASSWORDS="${ARCHIVE_PASSWORDS:-infected malware virus password 1234 adm
 SAMPLE_FILE=""
 SAMPLE_BASENAME=""
 EXTRACTED_SAMPLE=""
+ARCHIVE_MODE=""       # single | all_full | all_static
 SESSION_ID=""
 SESSION_DIR=""
 LOG_FILE=""
@@ -106,6 +108,7 @@ DYNAMIC_RISK_SCORE=0
 declare -a STATIC_FINDINGS=()
 declare -a DYNAMIC_FINDINGS=()
 declare -a MITRE_TECHNIQUES=()
+declare -a SESSION_REPORTS=()   # ścieżki raportów HTML per-plik
 
 # Auto-wykrycie architektury hosta
 HOST_ARCH=$(uname -m)   # x86_64 | arm64
@@ -202,9 +205,9 @@ print_banner() {
     echo -e "${CYAN}${BOLD}"
     cat <<'BANNER'
   ╔══════════════════════════════════════════════════════════╗
-  ║   🔬 Noriben QEMU Sandbox  v3.0                        ║
+  ║   🔬 Noriben QEMU Sandbox  v3.1                        ║
   ║   Apple HVF · qcow2 snapshots · izolacja sieciowa      ║
-  ║   Analiza statyczna + dynamiczna + archiwa z hasłem     ║
+  ║   Analiza statyczna + dynamiczna + wieloplikowe archiwa  ║
   ╚══════════════════════════════════════════════════════════╝
 BANNER
     echo -e "${RESET}"
@@ -247,14 +250,28 @@ try_extract_archive() {
             [[ -n "$password" ]] && unzip -P "$password" -o "$archive" -d "$dest_dir" >> "$LOG_FILE" 2>&1 \
                                  || unzip -o "$archive" -d "$dest_dir" >> "$LOG_FILE" 2>&1 ;;
         rar)
+            # Hierarchia fallbacków RAR:
+            # 1. unrar  (z cask rar: brew install --cask rar)
+            # 2. 7z     (brew install p7zip) — obsługuje RAR bez hasła i z hasłem
+            # 3. unar   (brew install unar)  — bez obsługi haseł RAR
             if command -v unrar &>/dev/null; then
                 [[ -n "$password" ]] && unrar x -p"$password" -y "$archive" "$dest_dir/" >> "$LOG_FILE" 2>&1 \
                                      || unrar x -y "$archive" "$dest_dir/" >> "$LOG_FILE" 2>&1
             elif command -v 7z &>/dev/null; then
                 [[ -n "$password" ]] && 7z x -p"$password" -o"$dest_dir" "$archive" >> "$LOG_FILE" 2>&1 \
                                      || 7z x -o"$dest_dir" "$archive" >> "$LOG_FILE" 2>&1
+            elif command -v unar &>/dev/null; then
+                if [[ -n "$password" ]]; then
+                    unar -p "$password" -o "$dest_dir" "$archive" >> "$LOG_FILE" 2>&1
+                else
+                    unar -o "$dest_dir" "$archive" >> "$LOG_FILE" 2>&1
+                fi
             else
-                log_err "Brak unrar i 7z — brew install unrar p7zip"; return 1
+                log_err "Brak narzędzia do RAR. Zainstaluj jedno z:"
+                log_err "  brew install --cask rar   (zalecane — instaluje unrar)"
+                log_err "  brew install p7zip        (7z z obsługą RAR)"
+                log_err "  brew install unar         (bez haseł RAR)"
+                return 1
             fi ;;
         7z)
             command -v 7z &>/dev/null || { log_err "Brak 7z — brew install p7zip"; return 1; }
@@ -266,88 +283,259 @@ try_extract_archive() {
     esac
 }
 
+# ─── Pomocnicze: wyświetl tabelę plików w archiwum ───────────
+_print_archive_table() {
+    local files_list="$1"   # newline-separated paths
+    local i=1
+    echo ""
+    printf "  ${CYAN}${BOLD}%-4s %-40s %-12s %s${RESET}\n" "Nr" "Nazwa pliku" "Rozmiar" "Typ"
+    printf "  %s\n" "$(printf '─%.0s' {1..72})"
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        local name size ftype
+        name=$(basename "$f")
+        size=$(du -sh "$f" 2>/dev/null | cut -f1)
+        ftype=$(file -b "$f" 2>/dev/null | cut -c1-28)
+        printf "  ${CYAN}[%-2d]${RESET} %-40s %-12s %s\n" "$i" "$name" "$size" "$ftype"
+        ((i++)) || true
+    done <<< "$files_list"
+    echo ""
+}
+
+# ─── Pomocnicze: crack hasła archiwum ────────────────────────
+_crack_archive_password() {
+    local archive="$1"
+    local extract_dir="$2"
+
+    add_finding "static" 10 "Archiwum chronione hasłem — technika obejścia AV"
+    add_mitre "T1027 — Obfuscated Files or Information"
+    log_warn "Archiwum szyfrowane — próba domyślnych haseł..."
+    echo ""
+
+    local cracked=false
+    for pwd in $ARCHIVE_PASSWORDS; do
+        printf "  Próba: ${DIM}%-18s${RESET}" "$pwd"
+        rm -rf "$extract_dir" 2>/dev/null || true
+        if try_extract_archive "$archive" "$extract_dir" "$pwd" 2>/dev/null \
+           && [[ -n "$(ls -A "$extract_dir" 2>/dev/null)" ]]; then
+            echo -e " ${GREEN}✓ SUKCES${RESET}"
+            log_ok "Hasło: '$pwd'"
+            cracked=true
+            echo "$pwd" > "$SESSION_DIR/archive_password.txt"
+            break
+        fi
+        echo -e " ${DIM}✗${RESET}"
+    done
+
+    if ! $cracked; then
+        echo ""
+        log_warn "Żadne domyślne hasło nie zadziałało"
+        read -r -p "  Podaj hasło ręcznie (Enter = pomiń): " manual_pwd
+        if [[ -n "$manual_pwd" ]]; then
+            rm -rf "$extract_dir" 2>/dev/null || true
+            if try_extract_archive "$archive" "$extract_dir" "$manual_pwd" \
+               && [[ -n "$(ls -A "$extract_dir" 2>/dev/null)" ]]; then
+                log_ok "Rozpakowano z hasłem ręcznym"
+                cracked=true
+                echo "$manual_pwd" > "$SESSION_DIR/archive_password.txt"
+            else
+                log_err "Złe hasło lub błąd rozpakowywania"
+            fi
+        fi
+    fi
+
+    $cracked || { log_err "Nie udało się rozpakować archiwum"; return 1; }
+    return 0
+}
+
+# ─── Pomocnicze: znajdź pliki wykonywalne w katalogu ─────────
+_find_executables() {
+    local dir="$1"
+    local results
+    # Najpierw szukaj typowych rozszerzeń malware
+    results=$(find "$dir" -type f \( \
+        -name "*.exe" -o -name "*.dll" -o -name "*.bat" \
+        -o -name "*.ps1" -o -name "*.vbs" -o -name "*.js"  \
+        -o -name "*.scr" -o -name "*.com" -o -name "*.hta" \
+        -o -name "*.msi" -o -name "*.jar" \) 2>/dev/null | sort)
+    # Fallback — wszystkie pliki jeśli brak typowych
+    if [[ -z "$results" ]]; then
+        results=$(find "$dir" -type f 2>/dev/null | sort)
+    fi
+    echo "$results"
+}
+
+# ─── Pomocnicze: menu wyboru trybu analizy ───────────────────
+_select_analysis_mode() {
+    local exe_files="$1"   # newline-separated
+    local file_count; file_count=$(echo "$exe_files" | grep -c . || echo 0)
+
+    echo -e "${BOLD}Znaleziono ${CYAN}$file_count${RESET}${BOLD} plików wykonywalnych w archiwum.${RESET}"
+    _print_archive_table "$exe_files"
+
+    echo -e "  Tryby analizy:"
+    echo -e "  ${CYAN}[0]${RESET}  Wszystkie — statyczna + dynamiczna po kolei (VM reset między próbkami)"
+    echo -e "  ${CYAN}[00]${RESET} Wszystkie — tylko statyczna (bez VM)"
+    echo -e "  ${CYAN}[N]${RESET}  Pojedynczy plik o numerze N"
+    echo ""
+    read -r -p "  Wybór [0]: " choice
+    choice="${choice:-0}"
+
+    case "$choice" in
+        "0")   ARCHIVE_MODE="all_full"   ;;
+        "00")  ARCHIVE_MODE="all_static" ;;
+        *)
+            local chosen_file
+            chosen_file=$(echo "$exe_files" | sed -n "${choice}p")
+            if [[ -z "$chosen_file" || ! -f "$chosen_file" ]]; then
+                log_warn "Nieprawidłowy wybór '$choice' — używam pliku #1"
+                chosen_file=$(echo "$exe_files" | head -1)
+            fi
+            ARCHIVE_MODE="single"
+            EXTRACTED_SAMPLE="$chosen_file"
+            ;;
+    esac
+
+    # Dla trybów "wszystkich" zapisz listę jako plik pomocniczy
+    if [[ "$ARCHIVE_MODE" == "all_full" || "$ARCHIVE_MODE" == "all_static" ]]; then
+        echo "$exe_files" > "$SESSION_DIR/archive_filelist.txt"
+        log "Tryb: $ARCHIVE_MODE — ${file_count} plików"
+    else
+        log "Tryb: single — $(basename "$EXTRACTED_SAMPLE")"
+    fi
+}
+
+# ─── Główna funkcja: rozpakuj archiwum i wybierz tryb ────────
 handle_archive() {
     local archive="$1"
     local arch_type; arch_type=$(detect_archive_type "$archive")
     local extract_dir="$SESSION_DIR/extracted"
 
-    section "ARCHIWUM Z HASŁEM — ROZPAKOWYWANIE"
-    log "Typ: $arch_type — $(basename "$archive")"
+    section "ARCHIWUM — ROZPAKOWYWANIE I INSPEKCJA"
+    echo -e "  Plik:    ${BOLD}$(basename "$archive")${RESET}"
+    echo -e "  Format:  ${BOLD}$arch_type${RESET}"
+    echo -e "  Rozmiar: ${BOLD}$(du -sh "$archive" | cut -f1)${RESET}"
+    echo ""
 
-    # Sprawdź szyfrowanie
+    # ── Detekcja szyfrowania ──────────────────────────────────
     local is_encrypted=false
     case "$arch_type" in
         zip) unzip -t "$archive" >> "$LOG_FILE" 2>&1 || is_encrypted=true ;;
-        rar) command -v unrar &>/dev/null && { unrar t "$archive" >> "$LOG_FILE" 2>&1 || is_encrypted=true; } ;;
+        rar)
+            if command -v unrar &>/dev/null; then
+                unrar t "$archive" >> "$LOG_FILE" 2>&1 || is_encrypted=true
+            elif command -v 7z &>/dev/null; then
+                7z t "$archive" >> "$LOG_FILE" 2>&1 || is_encrypted=true
+            fi ;;
         7z)  command -v 7z    &>/dev/null && { 7z t "$archive" >> "$LOG_FILE" 2>&1    || is_encrypted=true; } ;;
     esac
 
+    # ── Rozpakowanie ─────────────────────────────────────────
     if $is_encrypted; then
-        add_finding "static" 10 "Archiwum chronione hasłem — technika obejścia AV"
-        add_mitre "T1027 — Obfuscated Files or Information"
-        log_warn "Archiwum szyfrowane — próba domyślnych haseł..."
-        echo ""
-        local cracked=false
-        for pwd in $ARCHIVE_PASSWORDS; do
-            printf "  Próba: ${DIM}%-15s${RESET}" "$pwd"
-            rm -rf "$extract_dir" 2>/dev/null || true
-            if try_extract_archive "$archive" "$extract_dir" "$pwd" 2>/dev/null \
-               && [[ -n "$(ls -A "$extract_dir" 2>/dev/null)" ]]; then
-                echo -e " ${GREEN}✓ SUKCES${RESET}"
-                log_ok "Hasło: '$pwd'"
-                cracked=true
-                echo "$pwd" > "$SESSION_DIR/archive_password.txt"
-                break
-            fi
-            echo -e " ${DIM}✗${RESET}"
-        done
-        if ! $cracked; then
-            echo ""
-            log_warn "Żadne domyślne hasło nie zadziałało"
-            read -r -p "  Podaj hasło ręcznie (Enter = pomiń): " manual_pwd
-            if [[ -n "$manual_pwd" ]]; then
-                rm -rf "$extract_dir" 2>/dev/null || true
-                if try_extract_archive "$archive" "$extract_dir" "$manual_pwd" \
-                   && [[ -n "$(ls -A "$extract_dir" 2>/dev/null)" ]]; then
-                    log_ok "Rozpakowano z hasłem ręcznym"
-                    cracked=true
-                    echo "$manual_pwd" > "$SESSION_DIR/archive_password.txt"
-                fi
-            fi
-        fi
-        $cracked || { log_err "Nie udało się rozpakować archiwum"; return 1; }
+        _crack_archive_password "$archive" "$extract_dir" || return 1
     else
-        log_ok "Archiwum bez hasła"
-        try_extract_archive "$archive" "$extract_dir" "" || { log_err "Błąd rozpakowywania"; return 1; }
+        log_ok "Archiwum bez hasła — rozpakowuję..."
+        try_extract_archive "$archive" "$extract_dir" "" \
+            || { log_err "Błąd rozpakowywania"; return 1; }
     fi
 
-    echo ""
-    log "Zawartość:"
-    find "$extract_dir" -type f | while read -r f; do
-        local ft; ft=$(file -b "$f" 2>/dev/null | cut -c1-55)
-        echo -e "  ${GREEN}→${RESET} $(basename "$f")  ${DIM}($ft)${RESET}"
+    # ── Inwentaryzacja zawartości ─────────────────────────────
+    local exe_files; exe_files=$(_find_executables "$extract_dir")
+    local exe_count; exe_count=$(echo "$exe_files" | grep -c . 2>/dev/null || echo 0)
+    local all_count; all_count=$(find "$extract_dir" -type f 2>/dev/null | wc -l | tr -d ' ')
+
+    log "Archiwum zawiera: $all_count plików łącznie, $exe_count wykonywalnych"
+
+    # Wyświetl wszystkie pliki w archiwum
+    echo -e "${BOLD}Pełna zawartość archiwum ($all_count plików):${RESET}"
+    find "$extract_dir" -type f | sort | while read -r f; do
+        local rel="${f#$extract_dir/}"
+        local ft; ft=$(file -b "$f" 2>/dev/null | cut -c1-40)
+        local sz; sz=$(du -sh "$f" 2>/dev/null | cut -f1)
+        echo -e "  ${GREEN}→${RESET} ${rel}  ${DIM}[${sz}] ${ft}${RESET}"
+        echo "  ARCHIVE_FILE: $rel [$sz] $ft" >> "$LOG_FILE"
     done
 
-    local exe_files
-    exe_files=$(find "$extract_dir" -type f \
-        \( -name "*.exe" -o -name "*.dll" -o -name "*.bat" \
-           -o -name "*.ps1" -o -name "*.vbs" -o -name "*.scr" \) 2>/dev/null)
-    [[ -z "$exe_files" ]] && exe_files=$(find "$extract_dir" -type f | head -3)
-
-    local file_count; file_count=$(echo "$exe_files" | grep -c . || echo 0)
-    if [[ $file_count -gt 1 ]]; then
-        echo ""
-        echo -e "${BOLD}Znaleziono $file_count plików:${RESET}"
-        local i=1
-        while IFS= read -r f; do echo -e "  ${CYAN}[$i]${RESET} $(basename "$f")"; ((i++)) || true; done <<< "$exe_files"
-        echo -e "  ${CYAN}[0]${RESET} Analizuj wszystkie"
-        read -r -p "  Wybór [1]: " choice; choice="${choice:-1}"
-        [[ "$choice" == "0" ]] && EXTRACTED_SAMPLE="ALL:$extract_dir" \
-                                || EXTRACTED_SAMPLE=$(echo "$exe_files" | sed -n "${choice}p")
-    else
-        EXTRACTED_SAMPLE="$exe_files"
+    # ── Wybór trybu analizy ───────────────────────────────────
+    if [[ $exe_count -eq 0 ]]; then
+        log_warn "Brak plików wykonywalnych — biorę wszystkie pliki jako kandydatów"
+        exe_files=$(find "$extract_dir" -type f 2>/dev/null | sort | head -20)
+        exe_count=$(echo "$exe_files" | grep -c . || echo 0)
     fi
-    log_ok "Plik do analizy: $(basename "${EXTRACTED_SAMPLE#ALL:}")"
+
+    if [[ $exe_count -eq 1 ]]; then
+        ARCHIVE_MODE="single"
+        EXTRACTED_SAMPLE=$(echo "$exe_files" | head -1)
+        log_ok "Jeden plik wykonywalny — automatyczny wybór: $(basename "$EXTRACTED_SAMPLE")"
+    else
+        # Interaktywny wybór trybu
+        _select_analysis_mode "$exe_files"
+    fi
+}
+
+# ─── Reset stanu między analizami wielu plików ──────────────
+reset_per_file_state() {
+    STATIC_RISK_SCORE=0
+    DYNAMIC_RISK_SCORE=0
+    STATIC_FINDINGS=()
+    DYNAMIC_FINDINGS=()
+    MITRE_TECHNIQUES=()
+    EXTRACTED_SAMPLE=""
+    # Usuń stare SHA256 żeby raport HTML nie brał wartości z poprzedniej próbki
+    rm -f "$SESSION_DIR/sample_sha256.txt"
+}
+
+# ─── Pełny cykl analizy jednej próbki (statyczna + dynamiczna) ──
+analyze_single_file() {
+    local target="$1"          # pełna ścieżka na hoście
+    local idx="${2:-}"         # numer próbki w serii (np. "2/5"), pusty jeśli brak
+    local skip_dynamic="${3:-false}"   # "true" = tylko statyczna
+
+    local fname; fname=$(basename "$target")
+    local file_session_dir="$SESSION_DIR/files/${fname%%.*}_$(date '+%H%M%S')"
+    mkdir -p "$file_session_dir"
+
+    # Nagłówek próbki w serii
+    if [[ -n "$idx" ]]; then
+        echo ""
+        echo -e "${MAGENTA}${BOLD}"
+        echo "  ┌──────────────────────────────────────────────────────────┐"
+        printf "  │  Próbka %-51s│\n" "$idx — $fname"
+        echo "  └──────────────────────────────────────────────────────────┘"
+        echo -e "${RESET}"
+    fi
+
+    # ── Analiza statyczna ──────────────────────────────────────
+    static_analysis "$target"
+
+    # ── Analiza dynamiczna ────────────────────────────────────
+    if [[ "$skip_dynamic" == "false" ]]; then
+        # Wyczyść poprzednie wyniki Noriben w VM
+        vm_ssh "cmd /c 'del /Q C:\\NoribenLogs\\* 2>nul & exit 0'" >> "$LOG_FILE" 2>&1 || true
+
+        section "KOPIOWANIE PRÓBKI DO VM"
+        local vm_path="C:\\Malware\\${fname}"
+        vm_scp_to "$target" "$vm_path" && \
+            log_ok "Próbka skopiowana: $fname" || \
+            { log_err "Błąd kopiowania — pomijam analizę dynamiczną $fname"; }
+
+        run_dynamic_analysis "$vm_path"
+        collect_results "$file_session_dir"
+        analyze_dynamic_results "$file_session_dir"
+
+        # Wyczyść środowisko VM dla kolejnej próbki przez SSH
+        # (revert snapshota robi main po całej serii — tu tylko cleanup)
+        section "CZYSZCZENIE VM → GOTOWOŚĆ NA NASTĘPNĄ PRÓBKĘ"
+        vm_ssh "cmd /c 'del /Q C:\\Malware\\* 2>nul & del /Q C:\\NoribenLogs\\* 2>nul & exit 0'"             >> "$LOG_FILE" 2>&1 || true
+        log_ok "VM wyczyszczona — gotowa na kolejną próbkę"
+    fi
+
+    # ── Raport HTML per-plik ───────────────────────────────────
+    local html_out
+    html_out=$(generate_html_report "$target" "$file_session_dir")
+    SESSION_REPORTS+=("$html_out")
+
+    log_ok "Próbka $fname zakończona — static:$STATIC_RISK_SCORE dyn:$DYNAMIC_RISK_SCORE"
 }
 
 # ═════════════════════════════════════════════════════════════
@@ -711,7 +899,29 @@ check_host_tools() {
     echo ""
     echo -e "${BOLD}Narzędzia archiwów:${RESET}"
     check_and_install 7z    p7zip  "ZIP/RAR/7z z hasłem" || true
-    check_and_install unrar unrar  "archiwa RAR"          || true
+    # unrar — dostępny tylko przez cask "rar" (brew install --cask rar)
+    # Nie przez "brew install unrar" — ta formula została usunięta z Homebrew
+    if command -v unrar &>/dev/null; then
+        log_ok "unrar: $(command -v unrar)"
+    else
+        log_warn "Brak unrar — niedostępny przez 'brew install unrar' (usunięty z Homebrew)"
+        echo -e "  ${YELLOW}Opcje instalacji:${RESET}"
+        echo -e "    ${CYAN}brew install --cask rar${RESET}   ← zalecane (instaluje rar + unrar)"
+        echo -e "    ${CYAN}brew install p7zip${RESET}        ← fallback (7z obsługuje RAR)"
+        echo -e "    ${CYAN}brew install unar${RESET}         ← fallback (bez haseł RAR)"
+        read -r -p "  Zainstalować 'rar' (cask)? [t/N] " _c
+        if [[ "$_c" =~ ^[tTyY]$ ]]; then
+            start_spinner "Instalowanie cask rar..."
+            if brew install --cask rar >> "$LOG_FILE" 2>&1; then
+                stop_spinner; log_ok "rar (cask) zainstalowany → unrar dostępny"
+            else
+                stop_spinner; log_warn "Błąd instalacji cask rar — spróbuj: brew install unar"
+                check_and_install unar unar "fallback RAR bez haseł" || true
+            fi
+        else
+            check_and_install unar unar "fallback RAR (bez obsługi haseł)" || true
+        fi
+    fi
 
     echo ""
     echo -e "${BOLD}Python packages:${RESET}"
@@ -975,6 +1185,7 @@ run_dynamic_analysis() {
 
 # Pobierz wyniki z VM przez SCP
 collect_results() {
+    local dest_dir="${1:-$SESSION_DIR}"
     section "POBIERANIE WYNIKÓW Z VM (SCP)"
 
     # Spakuj wyniki w VM
@@ -983,27 +1194,30 @@ collect_results() {
         log_warn "Compress-Archive nieudane — kopiuję osobno..."
         local vm_files
         vm_files=$(vm_ssh "powershell -Command \"Get-ChildItem 'C:\\NoribenLogs' | Select-Object -ExpandProperty Name\"" 2>/dev/null || echo "")
+        mkdir -p "$dest_dir"
         while IFS= read -r fname; do
             [[ -z "$fname" ]] && continue
-            vm_scp_from "C:\\NoribenLogs\\$fname" "$SESSION_DIR/$fname" || true
+            vm_scp_from "C:\\NoribenLogs\\$fname" "$dest_dir/$fname" || true
         done <<< "$vm_files"
         return 0
     }
 
-    local local_zip="$SESSION_DIR/results_noriben.zip"
+    mkdir -p "$dest_dir"
+    local local_zip="$dest_dir/results_noriben.zip"
     vm_scp_from 'C:\NoribenLogs\results.zip' "$local_zip" && {
-        unzip -q "$local_zip" -d "$SESSION_DIR/" 2>/dev/null && \
-            { log_ok "Wyniki pobrane: $SESSION_DIR"; rm -f "$local_zip"; } || \
+        unzip -q "$local_zip" -d "$dest_dir/" 2>/dev/null && \
+            { log_ok "Wyniki pobrane: $dest_dir"; rm -f "$local_zip"; } || \
             log_warn "Błąd rozpakowywania — ZIP dostępny: $local_zip"
     } || log_err "Nie udało się skopiować wyników z VM"
 }
 
 # Analiza wyników Noriben
 analyze_dynamic_results() {
+    local src_dir="${1:-$SESSION_DIR}"
     section "ANALIZA WYNIKÓW NORIBEN"
 
-    local txt_report; txt_report=$(find "$SESSION_DIR" -name "Noriben_*.txt" 2>/dev/null | head -1)
-    local csv_data;   csv_data=$(find "$SESSION_DIR" -name "Noriben_*.csv" 2>/dev/null | head -1)
+    local txt_report; txt_report=$(find "$src_dir" -name "Noriben_*.txt" 2>/dev/null | head -1)
+    local csv_data;   csv_data=$(find "$src_dir" -name "Noriben_*.csv" 2>/dev/null | head -1)
 
     if [[ -z "$txt_report" || ! -f "$txt_report" ]]; then
         log_warn "Brak raportu TXT Noriben — analiza dynamiczna mogła się nie uruchomić"
@@ -1064,17 +1278,23 @@ analyze_dynamic_results() {
 # ═════════════════════════════════════════════════════════════
 
 generate_html_report() {
+    # Argumenty opcjonalne dla trybu wieloplikowego
+    local target_file="${1:-${EXTRACTED_SAMPLE:-$SAMPLE_FILE}}"
+    local report_dir="${2:-$SESSION_DIR}"
+
     section "GENEROWANIE RAPORTU HTML"
 
-    local html_out="$SESSION_DIR/REPORT_${SESSION_ID}.html"
+    local fname; fname=$(basename "$target_file")
+    local slug; slug="${fname%%.*}"
+    local html_out="$report_dir/REPORT_${slug}_${SESSION_ID}.html"
     local sha256; sha256=$(cat "$SESSION_DIR/sample_sha256.txt" 2>/dev/null || \
-        shasum -a 256 "${EXTRACTED_SAMPLE:-$SAMPLE_FILE}" | awk '{print $1}')
+        shasum -a 256 "$target_file" | awk '{print $1}')
     local ts; ts=$(date '+%Y-%m-%d %H:%M:%S')
-    local ftype; ftype=$(file -b "${EXTRACTED_SAMPLE:-$SAMPLE_FILE}" 2>/dev/null)
-    local fsize; fsize=$(du -sh "${EXTRACTED_SAMPLE:-$SAMPLE_FILE}" | cut -f1)
+    local ftype; ftype=$(file -b "$target_file" 2>/dev/null)
+    local fsize; fsize=$(du -sh "$target_file" | cut -f1)
 
     local noriben_txt=""
-    local nr; nr=$(find "$SESSION_DIR" -name "Noriben_*.txt" 2>/dev/null | head -1)
+    local nr; nr=$(find "$report_dir" -name "Noriben_*.txt" 2>/dev/null | head -1)
     [[ -n "$nr" && -f "$nr" ]] && noriben_txt=$(sed 's/&/\&amp;/g;s/</\&lt;/g;s/>/\&gt;/g' "$nr")
 
     local total_score=$(( (STATIC_RISK_SCORE + DYNAMIC_RISK_SCORE) / 2 ))
@@ -1108,7 +1328,7 @@ generate_html_report() {
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
-<title>QEMU Sandbox Report — ${SAMPLE_BASENAME}</title>
+<title>QEMU Sandbox Report — ${fname}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Courier New',monospace;background:#0d1117;color:#c9d1d9;padding:30px;line-height:1.6}
@@ -1336,6 +1556,186 @@ PSEOF
 }
 
 # ═════════════════════════════════════════════════════════════
+# MODUŁ G — ZBIORCZY RAPORT SERII (wieloplikowe archiwum)
+# ═════════════════════════════════════════════════════════════
+
+_generate_batch_report() {
+    local total_files="$1"
+    local -n _scores="$2"     # nameref do tablicy batch_scores
+    local -n _reports="$3"    # nameref do tablicy SESSION_REPORTS
+
+    local batch_html="$SESSION_DIR/BATCH_REPORT_${SESSION_ID}.html"
+    local ts; ts=$(date '+%Y-%m-%d %H:%M:%S')
+
+    # Policz statystyki
+    local high_count=0 med_count=0 low_count=0 total_score=0
+    for entry in "${_scores[@]}"; do
+        local score="${entry##*:}"
+        total_score=$(( total_score + score ))
+        if   [[ $score -ge 70 ]]; then ((high_count++)) || true
+        elif [[ $score -ge 40 ]]; then ((med_count++))  || true
+        else                           ((low_count++))   || true
+        fi
+    done
+    local avg_score=0
+    [[ ${#_scores[@]} -gt 0 ]] && avg_score=$(( total_score / ${#_scores[@]} ))
+    [[ $avg_score -gt 100 ]] && avg_score=100
+
+    # Tabela wyników w terminalu
+    echo ""
+    echo -e "${BOLD}${CYAN}╔══════════════════════════════════════════════════════════════╗"
+    echo -e "║  📊  PODSUMOWANIE SERII                                      ║"
+    echo -e "╠══════════════════════════════════════════════════════════════╣"
+    printf  "║  Łącznie plików:    %-41s║\n" "$total_files"
+    printf  "║  Wysokie ryzyko:    %-41s║\n" "${high_count} plików (score ≥ 70)"
+    printf  "║  Średnie ryzyko:    %-41s║\n" "${med_count} plików (score 40–69)"
+    printf  "║  Niskie ryzyko:     %-41s║\n" "${low_count} plików (score < 40)"
+    printf  "║  Średni score:      %-41s║\n" "$avg_score / 100"
+    echo -e "╚══════════════════════════════════════════════════════════════╝${RESET}"
+    echo ""
+    echo -e "${BOLD}Wyniki per plik:${RESET}"
+    for entry in "${_scores[@]}"; do
+        local fname="${entry%%:*}"
+        local score="${entry##*:}"
+        local bar_c="$GREEN"
+        local risk="NISKIE"
+        if   [[ $score -ge 70 ]]; then bar_c="$RED";    risk="WYSOKIE"
+        elif [[ $score -ge 40 ]]; then bar_c="$YELLOW"; risk="ŚREDNIE"
+        fi
+        printf "  %-38s ${bar_c}%3d/100${RESET}  %s\n" "$fname" "$score" "$risk"
+    done
+    echo ""
+    echo -e "  📁 Katalog sesji:  ${BOLD}$SESSION_DIR${RESET}"
+    echo -e "  📊 Zbiorczy raport: ${BOLD}$batch_html${RESET}"
+    echo ""
+
+    # Tabela linków do raportów per-plik
+    local reports_rows=""
+    local scores_idx=0
+    for report_path in "${_reports[@]}"; do
+        local rname; rname=$(basename "$report_path")
+        local fscore=""
+        [[ $scores_idx -lt ${#_scores[@]} ]] && {
+            local entry="${_scores[$scores_idx]}"
+            local fname="${entry%%:*}"
+            local score="${entry##*:}"
+            local sc_color="#3fb950"
+            [[ $score -ge 40 ]] && sc_color="#e3b341"
+            [[ $score -ge 70 ]] && sc_color="#f85149"
+            fscore="<span style='color:${sc_color};font-weight:bold'>${score}/100</span>"
+            reports_rows+="<tr><td><a href='${report_path}'>$rname</a></td><td>$fname</td><td>$fscore</td></tr>"
+        }
+        ((scores_idx++)) || true
+    done
+
+    # Dane wykresu do HTML (Chart.js sparkline)
+    local chart_labels="" chart_data="" chart_colors=""
+    for entry in "${_scores[@]}"; do
+        local fname="${entry%%:*}"
+        local score="${entry##*:}"
+        local color='"#3fb950"'
+        [[ $score -ge 40 ]] && color='"#e3b341"'
+        [[ $score -ge 70 ]] && color='"#f85149"'
+        chart_labels+="\"${fname}\","
+        chart_data+="${score},"
+        chart_colors+="${color},"
+    done
+
+    cat > "$batch_html" <<BATCHEOF
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>Batch Report — ${SAMPLE_BASENAME} — ${SESSION_ID}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Courier New',monospace;background:#0d1117;color:#c9d1d9;padding:30px;line-height:1.6}
+a{color:#58a6ff}
+h1{color:#58a6ff;font-size:1.7em;margin-bottom:4px}
+h2{color:#79c0ff;font-size:1.05em;margin:22px 0 10px;border-left:4px solid #388bfd;padding-left:12px}
+.subtitle{color:#8b949e;font-size:.85em}
+.hdr{border-bottom:1px solid #30363d;padding-bottom:14px;margin-bottom:18px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:10px 0}
+.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px;text-align:center}
+.card-num{font-size:2em;font-weight:bold}
+.card-lbl{color:#8b949e;font-size:.75em;margin-top:4px}
+.high{color:#f85149} .med{color:#e3b341} .low{color:#3fb950} .avg{color:#79c0ff}
+table{width:100%;border-collapse:collapse;font-size:.84em}
+th{color:#8b949e;text-align:left;padding:7px 10px;border-bottom:1px solid #30363d;font-weight:normal;font-size:.75em;text-transform:uppercase}
+td{padding:7px 10px;border-bottom:1px solid #21262d}
+tr:hover td{background:#161b22}
+.chart-wrap{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;margin:10px 0;height:260px}
+footer{color:#8b949e;font-size:.74em;margin-top:32px;border-top:1px solid #30363d;padding-top:10px}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="hdr">
+  <h1>📊 Batch Report — Seria archiwum</h1>
+  <p class="subtitle">Archiwum: ${SAMPLE_BASENAME} &nbsp;·&nbsp; Sesja: ${SESSION_ID} &nbsp;·&nbsp; $ts</p>
+  <p class="subtitle">QEMU + Apple HVF (${HOST_ARCH}) &nbsp;·&nbsp; Noriben + Procmon</p>
+</div>
+
+<h2>📈 Statystyki serii</h2>
+<div class="grid">
+  <div class="card"><div class="card-num avg">$avg_score</div><div class="card-lbl">Średni score / 100</div></div>
+  <div class="card"><div class="card-num">$total_files</div><div class="card-lbl">Łącznie plików</div></div>
+  <div class="card"><div class="card-num high">$high_count</div><div class="card-lbl">Wysokie ryzyko (≥70)</div></div>
+  <div class="card"><div class="card-num med">$med_count</div><div class="card-lbl">Średnie ryzyko (40–69)</div></div>
+  <div class="card"><div class="card-num low">$low_count</div><div class="card-lbl">Niskie ryzyko (&lt;40)</div></div>
+</div>
+
+<h2>📊 Wykres ryzyka per plik</h2>
+<div class="chart-wrap">
+  <canvas id="batchChart"></canvas>
+</div>
+<script>
+new Chart(document.getElementById('batchChart'), {
+  type: 'bar',
+  data: {
+    labels: [${chart_labels}],
+    datasets: [{
+      label: 'Risk Score',
+      data: [${chart_data}],
+      backgroundColor: [${chart_colors}],
+      borderRadius: 4
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    scales: {
+      y: { min: 0, max: 100, grid: { color: '#21262d' },
+           ticks: { color: '#8b949e' } },
+      x: { grid: { display: false }, ticks: { color: '#8b949e', maxRotation: 45 } }
+    },
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: ctx => ' Score: ' + ctx.raw + '/100' } }
+    }
+  }
+});
+</script>
+
+<h2>📋 Wyniki per plik</h2>
+<table>
+  <thead><tr><th>Raport HTML</th><th>Plik</th><th>Score</th></tr></thead>
+  <tbody>$reports_rows</tbody>
+</table>
+
+<footer>
+  Wygenerowano przez noriben_qemu_sandbox.sh v${VERSION} &nbsp;·&nbsp;
+  QEMU + Apple HVF · $total_files plików z archiwum ${SAMPLE_BASENAME}
+</footer>
+</body>
+</html>
+BATCHEOF
+
+    log_ok "Zbiorczy raport HTML: $batch_html"
+    echo -e "  ${DIM}open '$batch_html'${RESET}"
+    echo ""
+}
+
+# ═════════════════════════════════════════════════════════════
 # CLEANUP
 # ═════════════════════════════════════════════════════════════
 
@@ -1450,77 +1850,150 @@ HELP
     # 0. Narzędzia
     check_host_tools
 
-    # 1. Archiwum
+    # 1. Archiwum — rozpakowywanie i wybór trybu
     local analysis_target="$SAMPLE_FILE"
     if is_archive "$SAMPLE_FILE"; then
         [[ -n "$archive_password" ]] && ARCHIVE_PASSWORDS="$archive_password $ARCHIVE_PASSWORDS"
         handle_archive "$SAMPLE_FILE"
-        [[ -n "$EXTRACTED_SAMPLE" && "$EXTRACTED_SAMPLE" != ALL:* ]] && \
-            analysis_target="$EXTRACTED_SAMPLE"
+        # handle_archive ustawia ARCHIVE_MODE i EXTRACTED_SAMPLE
+        [[ "$ARCHIVE_MODE" == "single" ]] && analysis_target="$EXTRACTED_SAMPLE"
+    else
+        ARCHIVE_MODE="single"
+        analysis_target="$SAMPLE_FILE"
     fi
 
-    # 2. Analiza statyczna
-    [[ "$dynamic_only" == false ]] && static_analysis "$analysis_target"
+    # Nadpisz ARCHIVE_MODE jeśli użyto flag CLI
+    [[ "$static_only"  == "true" && "$ARCHIVE_MODE" == "all_full" ]]  && ARCHIVE_MODE="all_static"
+    [[ "$dynamic_only" == "true" && "$ARCHIVE_MODE" == "all_full" ]]  && ARCHIVE_MODE="all_full"  # zachowaj
 
-    # 3. Analiza dynamiczna
-    if [[ "$static_only" == false ]]; then
-        check_qemu_disk
-        check_qemu_snapshot
-
-        $no_revert || revert_to_snapshot
-        start_vm
-
-        # Pobierz Noriben.py jeśli nie ma
-        [[ ! -f "$HOST_TOOLS_DIR/Noriben.py" ]] && {
-            start_spinner "Pobieranie Noriben.py..."
-            curl -fsSL "https://raw.githubusercontent.com/Rurik/Noriben/master/Noriben.py" \
-                -o "$HOST_TOOLS_DIR/Noriben.py" 2>/dev/null && stop_spinner && log_ok "Noriben.py pobrany" || \
-                { stop_spinner; log_err "Brak Noriben.py"; }
+    # ─────────────────────────────────────────────────────────
+    # TRYB: all_full lub all_static — wiele plików po kolei
+    # ─────────────────────────────────────────────────────────
+    if [[ "$ARCHIVE_MODE" == "all_full" || "$ARCHIVE_MODE" == "all_static" ]]; then
+        local file_list_path="$SESSION_DIR/archive_filelist.txt"
+        [[ ! -f "$file_list_path" ]] && {
+            log_err "Brak listy plików — błąd wewnętrzny"
+            exit 1
         }
 
-        prepare_vm_environment
+        local all_files; mapfile -t all_files < "$file_list_path"
+        local total="${#all_files[@]}"
+        local skip_dynamic=false
+        [[ "$ARCHIVE_MODE" == "all_static" || "$static_only" == "true" ]] && skip_dynamic=true
 
-        section "KOPIOWANIE PRÓBKI DO VM"
-        local vm_path="C:\\Malware\\$(basename "$analysis_target")"
-        log "Kopiowanie: $(basename "$analysis_target") → $vm_path"
-        vm_scp_to "$analysis_target" "C:\\Malware\\$(basename "$analysis_target")" && \
-            log_ok "Próbka skopiowana" || log_err "Błąd kopiowania próbki"
+        echo ""
+        echo -e "${BOLD}${CYAN}╔══════════════════════════════════════════════════════════╗"
+        printf  "║  Tryb: %-53s║\n" "$([ "$skip_dynamic" == "true" ] && echo "WSZYSTKIE — tylko statyczna" || echo "WSZYSTKIE — statyczna + dynamiczna")"
+        printf  "║  Łącznie plików: %-43s║\n" "$total"
+        echo -e "╚══════════════════════════════════════════════════════════╝${RESET}"
 
-        run_dynamic_analysis "$vm_path"
-        collect_results
-        analyze_dynamic_results
+        # Przygotuj VM raz dla całej serii (tylko tryb full)
+        if [[ "$skip_dynamic" == "false" ]]; then
+            check_qemu_disk
+            check_qemu_snapshot
 
-        # Atomowe przywrócenie snapshota po analizie
-        section "RESET VM — PRZYWRÓCENIE CZYSTEGO STANU"
-        revert_to_snapshot
-        log_ok "VM zresetowana do stanu ${QEMU_SNAPSHOT} — gotowa na kolejną próbkę"
+            $no_revert || revert_to_snapshot
+            start_vm
+
+            [[ ! -f "$HOST_TOOLS_DIR/Noriben.py" ]] && {
+                start_spinner "Pobieranie Noriben.py..."
+                curl -fsSL "https://raw.githubusercontent.com/Rurik/Noriben/master/Noriben.py" \
+                    -o "$HOST_TOOLS_DIR/Noriben.py" 2>/dev/null \
+                    && { stop_spinner; log_ok "Noriben.py pobrany"; } \
+                    || { stop_spinner; log_err "Brak Noriben.py"; }
+            }
+            prepare_vm_environment
+        fi
+
+        # ── Pętla po plikach ─────────────────────────────────
+        local idx=0
+        local -a batch_scores=()
+        for file_path in "${all_files[@]}"; do
+            [[ -z "$file_path" || ! -f "$file_path" ]] && continue
+            ((idx++)) || true
+
+            reset_per_file_state
+            analyze_single_file "$file_path" "${idx}/${total}" "$skip_dynamic"
+
+            local f_total=$(( (STATIC_RISK_SCORE + DYNAMIC_RISK_SCORE) / 2 ))
+            [[ $f_total -gt 100 ]] && f_total=100
+            batch_scores+=("$(basename "$file_path"):${f_total}")
+        done
+
+        # Zatrzymaj VM po całej serii
+        [[ "$skip_dynamic" == "false" ]] && {
+            section "KONIEC SERII — ZATRZYMYWANIE VM"
+            stop_vm
+            log_ok "VM zatrzymana po przeanalizowaniu wszystkich $total plików"
+        }
+
+        # ── Zbiorczy raport serii ─────────────────────────────
+        _generate_batch_report "$total" batch_scores SESSION_REPORTS
+
+    # ─────────────────────────────────────────────────────────
+    # TRYB: single — jeden plik (normalny przepływ)
+    # ─────────────────────────────────────────────────────────
+    else
+        # Analiza statyczna
+        [[ "$dynamic_only" == "false" ]] && static_analysis "$analysis_target"
+
+        # Analiza dynamiczna
+        if [[ "$static_only" == "false" ]]; then
+            check_qemu_disk
+            check_qemu_snapshot
+
+            $no_revert || revert_to_snapshot
+            start_vm
+
+            [[ ! -f "$HOST_TOOLS_DIR/Noriben.py" ]] && {
+                start_spinner "Pobieranie Noriben.py..."
+                curl -fsSL "https://raw.githubusercontent.com/Rurik/Noriben/master/Noriben.py" \
+                    -o "$HOST_TOOLS_DIR/Noriben.py" 2>/dev/null \
+                    && { stop_spinner; log_ok "Noriben.py pobrany"; } \
+                    || { stop_spinner; log_err "Brak Noriben.py"; }
+            }
+
+            prepare_vm_environment
+
+            section "KOPIOWANIE PRÓBKI DO VM"
+            local vm_path="C:\\Malware\\$(basename "$analysis_target")"
+            vm_scp_to "$analysis_target" "$vm_path" && \
+                log_ok "Próbka skopiowana" || log_err "Błąd kopiowania próbki"
+
+            run_dynamic_analysis "$vm_path"
+            collect_results
+            analyze_dynamic_results
+
+            section "RESET VM → $QEMU_SNAPSHOT"
+            revert_to_snapshot
+            log_ok "VM zresetowana — gotowa na kolejną próbkę"
+        fi
+
+        local html_report
+        html_report=$(generate_html_report "$analysis_target" "$SESSION_DIR")
+        SESSION_REPORTS+=("$html_report")
+
+        # Podsumowanie końcowe
+        local total=$(( (STATIC_RISK_SCORE + DYNAMIC_RISK_SCORE) / 2 ))
+        [[ $total -gt 100 ]] && total=100
+
+        echo ""
+        echo -e "${GREEN}${BOLD}╔═════════════════════════════════════════════════╗"
+        echo -e "║  ✅  Analiza zakończona!                        ║"
+        echo -e "╚═════════════════════════════════════════════════╝${RESET}"
+        echo ""
+        printf "  %-22s ${BOLD}%d / 100${RESET}\n" "Wynik ryzyka:"  "$total"
+        printf "  %-22s %d\n"                       "Statyczna:"    "$STATIC_RISK_SCORE"
+        printf "  %-22s %d\n"                       "Dynamiczna:"   "$DYNAMIC_RISK_SCORE"
+        printf "  %-22s %s\n"                       "Hiperwizor:"   "QEMU + Apple HVF ($HOST_ARCH)"
+        echo ""
+        echo -e "  📁 Wyniki:      ${BOLD}$SESSION_DIR${RESET}"
+        [[ -n "$html_report" ]] && echo -e "  🌐 Raport HTML: ${BOLD}$html_report${RESET}"
+        echo ""
+        echo -e "  ${DIM}open '$html_report'${RESET}"
+        local sha256; sha256=$(shasum -a 256 "$analysis_target" | awk '{print $1}')
+        echo -e "  ${DIM}https://www.virustotal.com/gui/file/$sha256${RESET}"
+        echo ""
     fi
-
-    # 4. Raport HTML
-    local html_report
-    html_report=$(generate_html_report)
-
-    # Podsumowanie
-    local total=$(( (STATIC_RISK_SCORE + DYNAMIC_RISK_SCORE) / 2 ))
-    [[ $total -gt 100 ]] && total=100
-
-    echo ""
-    echo -e "${GREEN}${BOLD}╔═════════════════════════════════════════════════╗"
-    echo -e "║  ✅  Analiza zakończona!                        ║"
-    echo -e "╚═════════════════════════════════════════════════╝${RESET}"
-    echo ""
-    printf "  %-22s ${BOLD}%d / 100${RESET}\n" "Wynik ryzyka:"  "$total"
-    printf "  %-22s %d\n"                       "Statyczna:"    "$STATIC_RISK_SCORE"
-    printf "  %-22s %d\n"                       "Dynamiczna:"   "$DYNAMIC_RISK_SCORE"
-    printf "  %-22s %s\n"                       "Hiperwizor:"   "QEMU + Apple HVF ($HOST_ARCH)"
-    echo ""
-    echo -e "  📁 Wyniki:      ${BOLD}$SESSION_DIR${RESET}"
-    [[ -n "$html_report" ]] && echo -e "  🌐 Raport HTML: ${BOLD}$html_report${RESET}"
-    echo ""
-    echo -e "  ${DIM}open '$html_report'${RESET}"
-    local sha256; sha256=$(shasum -a 256 "$analysis_target" | awk '{print $1}')
-    echo -e "  ${DIM}https://www.virustotal.com/gui/file/$sha256${RESET}"
-    echo ""
 }
-
 main "$@"
