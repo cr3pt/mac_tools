@@ -221,7 +221,7 @@ detect_archive_type() {
     local f="$1"
     local magic ext
     magic=$(file -b "$f" 2>/dev/null || echo "")
-    ext="${f##*.}"; ext="${ext,,}"
+    ext="${f##*.}"; ext=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
     case "$magic" in
         *"Zip archive"*|*"ZIP"*)  echo "zip" ;;
         *"RAR archive"*)          echo "rar" ;;
@@ -658,23 +658,31 @@ PYEOF
     # B5. IOC Strings
     echo -e "\n${BOLD}[B5] Wskaźniki IOC (strings)${RESET}"
     local all_strings; all_strings=$(strings -n 6 "$target" 2>/dev/null || true)
-    declare -A IOC_MAP=(
-        ["URL/IP"]="https?://[^ ]{4,}|[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}"
-        ["Tor/Darknet"]="\.onion|socks[45]://|torbrowser"
-        ["C2/Reverse Shell"]="meterpreter|cobalt.?strike|nc -e|bind.shell|reverse.shell|powershell.*-enc"
-        ["Pobieranie kodu"]="URLDownload|Invoke-WebRequest|DownloadString|certutil.*-urlcache"
-        ["Kodowanie"]="base64 -d|FromBase64String|Convert.FromBase64"
-        ["Persistence Win"]="CurrentVersion.Run|RunOnce|schtasks.*/create|sc.*create"
-        ["Anti-debug/VM"]="IsDebuggerPresent|VirtualBox|VMware|QEMU|SbieDll|wine|Parallels"
-        ["Ransomware"]="ransom|CryptEncrypt|\.locked|\.encrypted|bitcoin|wallet"
-        ["Keylogger"]="GetAsyncKeyState|SetWindowsHookEx|keylog|GetClipboard"
-        ["Privilege Esc"]="SeDebugPrivilege|ImpersonateToken|UAC.*bypass"
-        ["Lateral Movement"]="psexec|wmiexec|net use|\\\\\\\\.*\\\\admin\$|pass.the.hash"
-        ["Dane wrażliwe"]="\.ssh|\.aws|password|credentials|api.?key"
+    local ioc_keys=(
+        "URL/IP" "Tor/Darknet" "C2/Reverse Shell"
+        "Pobieranie kodu" "Kodowanie" "Persistence Win"
+        "Anti-debug/VM" "Ransomware" "Keylogger"
+        "Privilege Esc" "Lateral Movement" "Dane wrazliwe"
     )
-    local total_ioc=0
-    for category in "${!IOC_MAP[@]}"; do
-        local hits; hits=$(echo "$all_strings" | grep -iEo "${IOC_MAP[$category]}" | sort -u | head -8 || true)
+    local ioc_pats=(
+        "https?://[^ ]{4,}|[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}"
+        "[.]onion|socks[45]://|torbrowser"
+        "meterpreter|cobalt.strike|nc -e|reverse.shell|powershell.*-enc"
+        "URLDownload|Invoke-WebRequest|DownloadString|certutil.*-urlcache"
+        "base64 -d|FromBase64String|Convert.FromBase64"
+        "CurrentVersion.Run|RunOnce|schtasks.*/create|sc.*create"
+        "IsDebuggerPresent|VirtualBox|VMware|QEMU|SbieDll|wine|Parallels"
+        "ransom|CryptEncrypt|[.]locked|[.]encrypted|bitcoin|wallet"
+        "GetAsyncKeyState|SetWindowsHookEx|keylog|GetClipboard"
+        "SeDebugPrivilege|ImpersonateToken|UAC.*bypass"
+        "psexec|wmiexec|net use|pass.the.hash"
+        "[.]ssh|[.]aws|password|credentials|api.key"
+    )
+    local total_ioc=0 _ioc_i=0
+    while [[ $_ioc_i -lt ${#ioc_keys[@]} ]]; do
+        local category="${ioc_keys[$_ioc_i]}" pattern="${ioc_pats[$_ioc_i]}"
+        ((_ioc_i++)) || true
+        local hits; hits=$(echo "$all_strings" | grep -iEo "$pattern" | sort -u | head -8 || true)
         if [[ -n "$hits" ]]; then
             echo -e "\n  ${RED}▶${RESET} ${BOLD}$category${RESET}"
             while IFS= read -r hit; do echo -e "    ${YELLOW}→${RESET} $hit"; echo "    IOC[$category]: $hit" >> "$LOG_FILE"; done <<< "$hits"
@@ -1230,19 +1238,26 @@ analyze_dynamic_results() {
     head -80 "$txt_report" | tee -a "$LOG_FILE"
 
     echo -e "\n${BOLD}── IOC dynamiczne ──${RESET}"
-    declare -A DYN_IOC=(
-        ["Nowe procesy"]="Process Create|CreateProcess|Spawned"
-        ["Sieć TCP/UDP"]="TCP|UDP|Connect|DNS"
-        ["Zapis rejestru"]="RegSetValue|RegCreateKey|\\\\Run\\\\|\\\\RunOnce\\\\"
-        ["Nowe pliki EXE/DLL"]="\.exe|\.dll|\.bat|\.ps1 CreateFile|WriteFile"
-        ["Autostart / Persistence"]="Run|RunOnce|Startup|Schedule|schtasks|Services"
-        ["Wstrzykiwanie procesów"]="VirtualAlloc|WriteProcessMemory|CreateRemoteThread"
-        ["Shadow Copy / VSS"]="vssadmin|ShadowCopy|DeleteShadow"
-        ["Modyfikacje systemu"]="System32|SysWOW64|hosts|firewall"
+    local dyn_keys=(
+        "Nowe procesy" "Siec TCP/UDP" "Zapis rejestru"
+        "Nowe pliki EXE" "Autostart Persistence" "Wstrzykiwanie procesow"
+        "Shadow Copy VSS" "Modyfikacje systemu"
     )
-    local dyn_total=0
-    for category in "${!DYN_IOC[@]}"; do
-        local hits; hits=$(grep -iE "${DYN_IOC[$category]}" "$txt_report" 2>/dev/null | \
+    local dyn_pats=(
+        "Process Create|CreateProcess|Spawned"
+        "TCP|UDP|Connect|DNS"
+        "RegSetValue|RegCreateKey|\\Run\\|\\RunOnce\\"
+        "[.]exe|[.]dll|[.]bat|[.]ps1|CreateFile|WriteFile"
+        "Run|RunOnce|Startup|Schedule|schtasks|Services"
+        "VirtualAlloc|WriteProcessMemory|CreateRemoteThread"
+        "vssadmin|ShadowCopy|DeleteShadow"
+        "System32|SysWOW64|hosts|firewall"
+    )
+    local dyn_total=0 _dyn_i=0
+    while [[ $_dyn_i -lt ${#dyn_keys[@]} ]]; do
+        local category="${dyn_keys[$_dyn_i]}" pattern="${dyn_pats[$_dyn_i]}"
+        ((_dyn_i++)) || true
+        local hits; hits=$(grep -iE "$pattern" "$txt_report" 2>/dev/null | \
             grep -vE "^#|Noriben|Procmon|^-{3}" | head -8 || true)
         if [[ -n "$hits" ]]; then
             echo -e "\n  ${RED}▶${RESET} ${BOLD}$category${RESET}"
@@ -1304,10 +1319,11 @@ generate_html_report() {
     [[ $total_score -ge 70 ]] && risk_class="high" && risk_label="WYSOKIE"  && risk_color="#f85149"
 
     local mitre_html=""
-    declare -A seen_mitre=()
+    local mitre_html="" _seen_mitre=""
     for t in "${MITRE_TECHNIQUES[@]:-}"; do
-        [[ -z "$t" || "${seen_mitre[$t]+_}" ]] && continue
-        seen_mitre["$t"]=1
+        [[ -z "$t" ]] && continue
+        case "$_seen_mitre" in *"|${t}|"*) continue ;; esac
+        _seen_mitre="${_seen_mitre}|${t}|"
         mitre_html+="<span class='mtag'>$t</span>"
     done
 
@@ -1876,7 +1892,10 @@ HELP
             exit 1
         }
 
-        local all_files; mapfile -t all_files < "$file_list_path"
+        local all_files=()
+        while IFS= read -r _mf_line; do
+            [[ -n "$_mf_line" ]] && all_files+=("$_mf_line")
+        done < "$file_list_path"
         local total="${#all_files[@]}"
         local skip_dynamic=false
         [[ "$ARCHIVE_MODE" == "all_static" || "$static_only" == "true" ]] && skip_dynamic=true
