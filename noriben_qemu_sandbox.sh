@@ -98,6 +98,7 @@ STATIC_FINDINGS=()
 DYNAMIC_FINDINGS=()
 MITRE_TECHNIQUES=()
 SESSION_REPORTS=()
+batch_scores=()
 
 # ─── Tryb dual-VM ────────────────────────────────────────────
 DUAL_VM_MODE="${DUAL_VM_MODE:-false}"
@@ -484,6 +485,16 @@ try:
             print(f"\n  [!] PODEJRZANE IMPORTY:")
             for dll, fn, t in found_sus:
                 print(f"      {dll} → {fn}  [{t}]")
+    if hasattr(pe, 'VS_VERSIONINFO'):
+        print(f"\n  Version Info:")
+        for vi in pe.VS_VERSIONINFO:
+            if hasattr(vi, 'StringFileInfo'):
+                for sf in vi.StringFileInfo:
+                    for st in sf.StringTable:
+                        for k, v in st.entries.items():
+                            k2 = k.decode(errors='replace')
+                            v2 = v.decode(errors='replace').strip()
+                            if v2: print(f"    {k2}: {v2}")
 except ImportError: print("  [pefile niedostępny — pip3 install pefile]")
 except Exception as e: print(f"  [Błąd PE: {e}]")
 PYEOF
@@ -552,11 +563,38 @@ PYEOF
         exiftool "$target" 2>/dev/null | grep -vE "^ExifTool Version|^File Name|^Directory" | head -20 | tee -a "$LOG_FILE" || true
     fi
 
-    echo -e "\n${BOLD}[B7] YARA${RESET}"
+    echo -e "\n${BOLD}[B7] Detekcja packera${RESET}"
+    local packed=false
+    if command -v upx &>/dev/null && upx -t "$target" >> "$LOG_FILE" 2>&1; then
+        log_warn "UPX packer wykryty!"
+        add_finding "static" 20 "Spakowany UPX — utrudnia analizę statyczną"
+        add_mitre "T1027 — Obfuscated Files"
+        packed=true
+        read -r -p "$(echo -e "  ${YELLOW}Rozpakować UPX? [t/N]${RESET} ")" upx_c
+        if [[ "$upx_c" =~ ^[tTyY]$ ]]; then
+            local unpacked="$SESSION_DIR/unpacked_$(basename "$target")"
+            cp "$target" "$unpacked"
+            upx -d "$unpacked" >> "$LOG_FILE" 2>&1 && {
+                log_ok "Rozpakowano: $unpacked"
+                static_analysis "$unpacked"; return
+            }
+        fi
+    fi
+    local psigs; psigs=$(strings -n 4 "$target" 2>/dev/null | \
+        grep -iE "MPRESS|Themida|Enigma|VMProtect|Obsidium|ASPack|PECompact|PESpin|nPack|WinUpack|Molebox" | head -3 || true)
+    if [[ -n "$psigs" ]]; then
+        log_warn "Możliwy protektor/packer: $(echo "$psigs" | head -1)"
+        add_finding "static" 25 "Znany protektor PE: $(echo "$psigs" | head -1)"
+        add_mitre "T1027 — Obfuscated Files"
+        packed=true
+    fi
+    $packed || log_ok "Nie wykryto znanych packerów"
+
+    echo -e "\n${BOLD}[B8] YARA${RESET}"
     _yara_scan "$target"
 
     if command -v clamscan &>/dev/null; then
-        echo -e "\n${BOLD}[B8] ClamAV${RESET}"
+        echo -e "\n${BOLD}[B9] ClamAV${RESET}"
         start_spinner "ClamAV skanowanie..."
         if clamscan --heuristic-alerts "$target" 2>&1 | tee -a "$LOG_FILE" | grep -q "OK$"; then
             stop_spinner; log_ok "ClamAV: CZYSTY"
@@ -933,6 +971,17 @@ run_dynamic_analysis() {
 
     _vm_ssh "$ssh_port" "cmd /c 'del /Q C:\\NoribenLogs\\* 2>nul & exit 0'" >> "$LOG_FILE" 2>&1 || true
 
+    # Opcjonalne przechwytywanie ruchu sieciowego przez tcpdump (loopback)
+    local tcpdump_pid="" pcap_file="$SESSION_DIR/${label}_network_capture.pcap"
+    if command -v tcpdump &>/dev/null; then
+        read -r -p "$(echo -e "  ${YELLOW}Przechwytywać ruch $label przez tcpdump? [t/N]${RESET} ")" tcp_c
+        if [[ "$tcp_c" =~ ^[tTyY]$ ]]; then
+            sudo tcpdump -i lo0 "port $ssh_port" -w "$pcap_file" >> "$LOG_FILE" 2>&1 &
+            tcpdump_pid=$!
+            log_ok "tcpdump uruchomiony (PID: $tcpdump_pid) → $pcap_file"
+        fi
+    fi
+
     local analysis_start; analysis_start=$(date +%s)
     local ps_cmd
     ps_cmd="Start-Process -FilePath '$VM_PYTHON' -ArgumentList '$VM_NORIBEN','--cmd','$sample_vm_path','--timeout','$ANALYSIS_TIMEOUT','--output','C:\\NoribenLogs','--headless','--generalize' -Wait -NoNewWindow -RedirectStandardOutput 'C:\\NoribenLogs\\noriben_stdout.txt' -RedirectStandardError 'C:\\NoribenLogs\\noriben_stderr.txt'"
@@ -952,6 +1001,7 @@ run_dynamic_analysis() {
     printf "\r\033[K"
     wait $ssh_pid 2>/dev/null || true
     log_ok "$label — Noriben zakończył po $(( $(date +%s) - analysis_start ))s"
+    [[ -n "$tcpdump_pid" ]] && { sudo kill "$tcpdump_pid" 2>/dev/null || true; log_ok "PCAP: $pcap_file"; }
     sleep 2
 }
 
@@ -1172,7 +1222,11 @@ generate_html_report() {
         [[ -n "$nr3" && -f "$nr3" ]] && arm_noriben_html=$(sed 's/&/\&amp;/g;s/</\&lt;/g;s/>/\&gt;/g' "$nr3")
     }
 
-    local log_html; log_html=$(tail -60 "$LOG_FILE" 2>/dev/null | sed 's/&/\&amp;/g;s/</\&lt;/g;s/>/\&gt;/g')
+    local log_html; log_html=$(tail -80 "$LOG_FILE" 2>/dev/null | sed 's/&/\&amp;/g;s/</\&lt;/g;s/>/\&gt;/g')
+    local qemu_log_html; qemu_log_html=$(cat "$SESSION_DIR/qemu.log" 2>/dev/null | tail -30 | \
+        sed 's/&/\&amp;/g;s/</\&lt;/g;s/>/\&gt;/g' || echo "(brak)")
+    local qemu2_log_html; qemu2_log_html=$(cat "$SESSION_DIR/qemu2.log" 2>/dev/null | tail -20 | \
+        sed 's/&/\&amp;/g;s/</\&lt;/g;s/>/\&gt;/g' || echo "(brak)")
 
     local dual_section=""
     if [[ -n "$arm_dir" || -n "$x86_dir" ]]; then
@@ -1239,6 +1293,14 @@ footer{color:#8b949e;font-size:.73em;margin-top:32px;border-top:1px solid #30363
   <p class="subtitle">Host: macOS ${HOST_ARCH} · VM1: aarch64/HVF · VM2: x86_64/TCG</p>
 </div>
 
+<h2>🛡 Model izolacji</h2>
+<div class="grid">
+  <div class="card"><div class="lbl">VM1 hiperwizor</div><div class="val">QEMU + Apple HVF (${HOST_ARCH}) — kernel-level isolation</div></div>
+  <div class="card"><div class="lbl">VM2 hiperwizor</div><div class="val">QEMU TCG (software emulation x86_64)</div></div>
+  <div class="card"><div class="lbl">Sieć VM</div><div class="val" style="color:#3fb950">IZOLOWANA — user-mode restrict=on, tylko SSH localhost</div></div>
+  <div class="card"><div class="lbl">Snapshot reset</div><div class="val">qemu-img atomowy &lt;3s — ${QEMU_SNAPSHOT}</div></div>
+</div>
+
 <h2>📁 Próbka</h2>
 <div class="grid">
   <div class="card"><div class="lbl">Nazwa</div><div class="val">${fname}</div></div>
@@ -1286,6 +1348,13 @@ fi)
 <h2>📄 Log hosta</h2>
 <pre>${log_html}</pre>
 
+<h2>🖥 Log QEMU — VM1 (ARM/HVF)</h2>
+<pre>${qemu_log_html}</pre>
+
+$(if [[ -n "$qemu2_log_html" && "$qemu2_log_html" != "(brak)" ]]; then
+    echo "<h2>🖥 Log QEMU — VM2 (x86/TCG)</h2><pre>${qemu2_log_html}</pre>"
+fi)
+
 <footer>noriben_qemu_sandbox.sh v${VERSION} · QEMU/HVF (ARM64) + QEMU/TCG (x86_64) · Noriben + Procmon</footer>
 </body></html>
 HTMLEOF
@@ -1300,22 +1369,24 @@ HTMLEOF
 # ═══════════════════════════════════════════════════════════════
 
 _generate_batch_report() {
+    # Argumenty: total_files scores_array_name reports_array_name
+    # Zamiast nameref (bash 4.3+) używamy globalnych tablic bezpośrednio
     local total_files="$1"
-    local -n _scores="$2"
-    local -n _reports="$3"
+    # batch_scores i SESSION_REPORTS są globalne — używamy ich bezpośrednio
     local batch_html="$SESSION_DIR/BATCH_REPORT_${SESSION_ID}.html"
     local ts; ts=$(date '+%Y-%m-%d %H:%M:%S')
-    local high_count=0 med_count=0 low_count=0 total_score=0 avg_score=0
+    local high_count=0 med_count=0 low_count=0 total_score_sum=0 avg_score=0
 
-    for entry in "${_scores[@]}"; do
+    for entry in "${batch_scores[@]:-}"; do
+        [[ -z "$entry" ]] && continue
         local score="${entry##*:}"
-        total_score=$(( total_score + score ))
+        total_score_sum=$(( total_score_sum + score ))
         if   [[ $score -ge 70 ]]; then ((high_count++)) || true
         elif [[ $score -ge 40 ]]; then ((med_count++))  || true
         else                           ((low_count++))  || true
         fi
     done
-    [[ ${#_scores[@]} -gt 0 ]] && avg_score=$(( total_score / ${#_scores[@]} ))
+    [[ ${#batch_scores[@]} -gt 0 ]] && avg_score=$(( total_score_sum / ${#batch_scores[@]} ))
     [[ $avg_score -gt 100 ]] && avg_score=100
 
     echo ""
@@ -1326,7 +1397,8 @@ _generate_batch_report() {
         "$high_count" "$med_count" "$low_count"
     echo -e "╚══════════════════════════════════════════════════════════╝${RESET}"
     echo ""
-    for entry in "${_scores[@]}"; do
+    for entry in "${batch_scores[@]:-}"; do
+        [[ -z "$entry" ]] && continue
         local fname="${entry%%:*}" score="${entry##*:}"
         local bar_c="$GREEN" risk="NISKIE"
         [[ $score -ge 40 ]] && bar_c="$YELLOW" && risk="SREDNIE"
@@ -1337,15 +1409,19 @@ _generate_batch_report() {
 
     local reports_rows="" chart_labels="" chart_data="" chart_colors=""
     local si=0
-    for report_path in "${_reports[@]}"; do
+    for report_path in "${SESSION_REPORTS[@]:-}"; do
+        [[ -z "$report_path" ]] && { ((si++)) || true; continue; }
         local rname; rname=$(basename "$report_path")
-        if [[ $si -lt ${#_scores[@]} ]]; then
-            local entry="${_scores[$si]}"
-            local fname="${entry%%:*}" score="${entry##*:}"
-            local sc_c='"#3fb950"'; [[ $score -ge 40 ]] && sc_c='"#e3b341"'; [[ $score -ge 70 ]] && sc_c='"#f85149"'
-            reports_rows+="<tr><td><a href='${report_path}'>$rname</a></td><td>$fname</td><td style='color:${sc_c/\"/};font-weight:bold'>${score}/100</td></tr>"
-            chart_labels+="\"${fname}\","
-            chart_data+="${score},"
+        if [[ $si -lt ${#batch_scores[@]} ]]; then
+            local bentry="${batch_scores[$si]}"
+            local bfname="${bentry%%:*}" bscore="${bentry##*:}"
+            local sc_c='"#3fb950"'
+            [[ $bscore -ge 40 ]] && sc_c='"#e3b341"'
+            [[ $bscore -ge 70 ]] && sc_c='"#f85149"'
+            local sc_cv="${sc_c//\"/}"
+            reports_rows+="<tr><td><a href='${report_path}'>$rname</a></td><td>$bfname</td><td style='color:${sc_cv};font-weight:bold'>${bscore}/100</td></tr>"
+            chart_labels+="\"${bfname}\","
+            chart_data+="${bscore},"
             chart_colors+="${sc_c},"
         fi
         ((si++)) || true
@@ -1671,7 +1747,7 @@ HELP
         fi
 
         local idx=0
-        local batch_scores=()
+        batch_scores=()
         for file_path in "${all_files[@]}"; do
             [[ -z "$file_path" || ! -f "$file_path" ]] && continue
             ((idx++)) || true
@@ -1711,7 +1787,7 @@ HELP
             stop_all_vms
             log_ok "Wszystkie VM zatrzymane"
         }
-        _generate_batch_report "$total" batch_scores SESSION_REPORTS
+        _generate_batch_report "$total"
         echo -e "  📁 Wyniki: ${BOLD}$SESSION_DIR${RESET}"
 
     # ─── TRYB SINGLE ─────────────────────────────────────────
