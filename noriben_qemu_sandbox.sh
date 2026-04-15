@@ -35,7 +35,7 @@
 # ============================================================
 
 set -euo pipefail
-VERSION="3.2.0"
+VERSION="3.2.0-extended-verified-hardened"
 
 # ─── Kolory ───────────────────────────────────────────────────
 RED='\033[0;31m'; YELLOW='\033[1;33m'; GREEN='\033[0;32m'
@@ -104,10 +104,204 @@ batch_scores=()
 DUAL_VM_MODE="${DUAL_VM_MODE:-false}"
 
 HOST_ARCH=$(uname -m)
+ENABLE_HOST_VENV="${ENABLE_HOST_VENV:-true}"
+HOST_VENV_DIR="${HOST_VENV_DIR:-${HOME}/NoribenTools/.venv-noriben}"
+SIGMA_RULES_DIR_DEFAULT="${HOST_TOOLS_DIR}/sigma_rules"
+YARA_RULES_DIR_DEFAULT="${HOST_TOOLS_DIR}/yara_rules"
 
 # ═══════════════════════════════════════════════════════════════
 # HELPERS
 # ═══════════════════════════════════════════════════════════════
+
+ensure_host_python_env() {
+    [[ "$ENABLE_HOST_VENV" != "true" ]] && return 0
+    command -v python3 &>/dev/null || { log_warn "Brak python3 — pomijam virtualenv"; return 1; }
+    mkdir -p "$HOST_TOOLS_DIR"
+
+    local need_create=false
+    [[ ! -x "$HOST_VENV_DIR/bin/python3" ]] && need_create=true
+    if $need_create; then
+        log "Tworzenie host virtualenv: $HOST_VENV_DIR"
+        python3 -m venv "$HOST_VENV_DIR" >> "$LOG_FILE" 2>&1 || {
+            log_warn "Nie udało się utworzyć virtualenv — pozostaję przy systemowym python3"
+            return 1
+        }
+    fi
+
+    local vpy="$HOST_VENV_DIR/bin/python3"
+    local vpip="$HOST_VENV_DIR/bin/pip"
+    [[ -x "$vpy" ]] || { log_warn "virtualenv niekompletny"; return 1; }
+
+    "$vpy" -m pip install --upgrade pip wheel setuptools >> "$LOG_FILE" 2>&1 || true
+    "$vpip" install pefile yara-python sigma-cli >> "$LOG_FILE" 2>&1 || true
+
+    export HOST_PYTHON="$vpy"
+    export HOST_PIP="$vpip"
+    if "$HOST_PYTHON" -c "import pefile" >/dev/null 2>&1; then
+        log_ok "Host Python env: $HOST_PYTHON"
+    else
+        log_warn "Host Python env utworzony, ale pakiety opcjonalne mogą wymagać ręcznej instalacji"
+    fi
+    return 0
+}
+
+_write_sigma_rules() {
+    local dir="$SIGMA_RULES_DIR_DEFAULT"
+    mkdir -p "$dir"
+
+    cat > "$dir/suspicious_powershell.sigma" << 'SIGEOF'
+title: Suspicious PowerShell Execution
+id: sigma-powershell-001
+status: experimental
+logsource:
+  category: process_creation
+detection:
+  selection:
+    CommandLine|contains:
+      - powershell
+      - -enc
+      - FromBase64String
+      - Invoke-WebRequest
+      - DownloadString
+  condition: selection
+fields:
+  - CommandLine
+level: high
+SIGEOF
+
+    cat > "$dir/lolbins_download_exec.sigma" << 'SIGEOF'
+title: LOLBins Download Or Proxy Execution
+id: sigma-lolbin-001
+status: experimental
+logsource:
+  category: process_creation
+detection:
+  selection:
+    CommandLine|contains:
+      - certutil
+      - bitsadmin
+      - regsvr32
+      - rundll32
+      - mshta
+      - wmic
+  condition: selection
+fields:
+  - CommandLine
+level: high
+SIGEOF
+
+    cat > "$dir/persistence_registry_tasks.sigma" << 'SIGEOF'
+title: Persistence via Run Keys Or Scheduled Tasks
+id: sigma-persist-001
+status: experimental
+logsource:
+  category: process_creation
+detection:
+  selection:
+    CommandLine|contains:
+      - RunOnce
+      - CurrentVersion\\Run
+      - schtasks
+      - Startup
+      - CreateService
+  condition: selection
+fields:
+  - CommandLine
+level: high
+SIGEOF
+
+    cat > "$dir/defense_evasion_shadowcopy_defender.sigma" << 'SIGEOF'
+title: Defense Evasion Via Shadow Copy Or Defender Changes
+id: sigma-defense-001
+status: experimental
+logsource:
+  category: process_creation
+detection:
+  selection:
+    CommandLine|contains:
+      - vssadmin delete shadows
+      - wbadmin delete catalog
+      - Set-MpPreference
+      - DisableRealtimeMonitoring
+      - wevtutil cl
+  condition: selection
+fields:
+  - CommandLine
+level: critical
+SIGEOF
+
+    cat > "$dir/credential_access_lsass.sigma" << 'SIGEOF'
+title: Potential LSASS Credential Access
+id: sigma-creds-001
+status: experimental
+logsource:
+  category: process_access
+detection:
+  selection:
+    CommandLine|contains:
+      - lsass
+      - MiniDumpWriteDump
+      - sekurlsa
+      - LogonPasswords
+  condition: selection
+fields:
+  - CommandLine
+level: critical
+SIGEOF
+}
+
+_sigma_scan() {
+    local txt_report="$1"
+    [[ -f "$txt_report" ]] || return 0
+    local sigma_dir="$SIGMA_RULES_DIR_DEFAULT"
+    [[ -d "$sigma_dir" ]] || _write_sigma_rules
+
+    local matches=0
+    while IFS= read -r rule; do
+        [[ -f "$rule" ]] || continue
+        local title pattern_list hit_count=0
+        title=$(awk -F': ' '/^title:/{print $2; exit}' "$rule")
+        pattern_list=$(awk '
+            /CommandLine\|contains:/{flag=1; next}
+            flag && /^[[:space:]]*-[[:space:]]*/{sub(/^[[:space:]]*-[[:space:]]*/, "", $0); print; next}
+            flag && !/^[[:space:]]*-[[:space:]]*/{flag=0}
+        ' "$rule")
+        [[ -z "$pattern_list" ]] && continue
+
+        local hits=""
+        while IFS= read -r pat; do
+            [[ -z "$pat" ]] && continue
+            local partial
+            partial=$(grep -iF "$pat" "$txt_report" 2>/dev/null | grep -vE '^#|Noriben|Procmon|^-{3}' | head -3 || true)
+            if [[ -n "$partial" ]]; then
+                hit_count=$((hit_count + 1))
+                hits="$hits
+$partial"
+            fi
+        done <<< "$pattern_list"
+
+        if [[ $hit_count -gt 0 ]]; then
+            matches=$((matches + 1))
+            log_warn "SIGMA: $title ($hit_count wzorców)"
+            add_finding "dynamic" 25 "SIGMA: $title"
+            case "$title" in
+                *PowerShell*) add_mitre "T1059.001 — PowerShell" ;;
+                *LOLBins*) add_mitre "T1218 — Signed Binary Proxy Execution" ;;
+                *Persistence*) add_mitre "T1547 — Boot/Logon Autostart Execution" ;;
+                *Shadow*|*Defender*) add_mitre "T1562 — Impair Defenses" ;;
+                *LSASS*) add_mitre "T1003 — OS Credential Dumping" ;;
+            esac
+            echo -e " ${MAGENTA}▶${RESET} ${BOLD}SIGMA${RESET} $title"
+            printf '%s\n' "$hits" | sed '/^$/d' | sort -u | head -6 | while IFS= read -r line; do
+                echo -e " ${YELLOW}→${RESET} $line"
+                echo " SIGMA[$title]: $line" >> "$LOG_FILE"
+            done
+        fi
+    done < <(find "$sigma_dir" -type f -name '*.sigma' | sort)
+
+    [[ $matches -eq 0 ]] && log_ok "SIGMA: brak dopasowań"
+}
+
 
 spinner_chars="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
@@ -609,63 +803,171 @@ PYEOF
     log_ok "Analiza statyczna zakończona — score: $STATIC_RISK_SCORE"
 }
 
+
 _create_yara_rules() {
     local f="$SESSION_DIR/rules.yar"
     cat > "$f" << 'YARARULES'
 rule Ransomware_Indicators {
-    meta: mitre="T1486"
-    strings:
-        $e1="CryptEncrypt" nocase $e2="BCryptEncrypt" nocase
-        $n1="ransom" nocase $n2="bitcoin" nocase $n3=".locked" nocase
-    condition: (2 of ($e*)) or (2 of ($n*))
+  meta: mitre="T1486"
+  strings:
+    $e1="CryptEncrypt" nocase
+    $e2="BCryptEncrypt" nocase
+    $e3="vssadmin delete shadows" nocase
+    $e4="wbadmin delete catalog" nocase
+    $n1="ransom" nocase
+    $n2="bitcoin" nocase
+    $n3=".locked" nocase
+    $n4=".encrypted" nocase
+  condition:
+    2 of ($e*) or 2 of ($n*) or ($e3 and 1 of ($n*))
 }
+
 rule ProcessInjection {
-    meta: mitre="T1055"
-    strings:
-        $i1="VirtualAllocEx" nocase $i2="WriteProcessMemory" nocase
-        $i3="CreateRemoteThread" nocase $i4="NtCreateThreadEx" nocase
-    condition: 2 of them
+  meta: mitre="T1055"
+  strings:
+    $i1="VirtualAllocEx" nocase
+    $i2="WriteProcessMemory" nocase
+    $i3="CreateRemoteThread" nocase
+    $i4="NtCreateThreadEx" nocase
+    $i5="QueueUserAPC" nocase
+    $i6="SetThreadContext" nocase
+    $i7="ResumeThread" nocase
+    $i8="CreateRemoteThreadEx" nocase
+  condition:
+    2 of them
 }
+
 rule Keylogger_Spyware {
-    meta: mitre="T1056"
-    strings:
-        $k1="GetAsyncKeyState" nocase $k2="SetWindowsHookEx" nocase
-        $k3="GetClipboardData" nocase
-    condition: 2 of them
+  meta: mitre="T1056"
+  strings:
+    $k1="GetAsyncKeyState" nocase
+    $k2="SetWindowsHookEx" nocase
+    $k3="GetClipboardData" nocase
+    $k4="RegisterHotKey" nocase
+    $k5="GetForegroundWindow" nocase
+  condition:
+    2 of them
 }
+
 rule AntiAnalysis {
-    meta: mitre="T1497,T1622"
-    strings:
-        $d1="IsDebuggerPresent" nocase $v1="VirtualBox" nocase
-        $v2="VMware" nocase $v3="QEMU" nocase $v4="Parallels" nocase
-    condition: 1 of ($d*) or 2 of ($v*)
+  meta: mitre="T1497,T1622"
+  strings:
+    $d1="IsDebuggerPresent" nocase
+    $d2="CheckRemoteDebuggerPresent" nocase
+    $d3="NtQueryInformationProcess" nocase
+    $v1="VirtualBox" nocase
+    $v2="VMware" nocase
+    $v3="QEMU" nocase
+    $v4="Parallels" nocase
+    $v5="SbieDll" nocase
+    $v6="VBoxService" nocase
+  condition:
+    1 of ($d*) or 2 of ($v*)
 }
+
 rule NetworkC2 {
-    meta: mitre="T1071"
-    strings:
-        $c1="meterpreter" nocase $c2="cobalt strike" nocase
-        $c3="mimikatz" nocase $tor=".onion" nocase
-    condition: 1 of them
+  meta: mitre="T1071"
+  strings:
+    $c1="meterpreter" nocase
+    $c2="cobalt strike" nocase
+    $c3="mimikatz" nocase
+    $c4="http://" nocase
+    $c5="https://" nocase
+    $c6="User-Agent:" nocase
+    $tor=".onion" nocase
+  condition:
+    2 of them or $tor
 }
+
 rule Persistence_Registry {
-    meta: mitre="T1547"
-    strings:
-        $r1="CurrentVersion\\Run" nocase wide $r2="RunOnce" nocase wide
-        $r3="schtasks /create" nocase
-    condition: 2 of them
+  meta: mitre="T1547"
+  strings:
+    $r1="CurrentVersion\\Run" nocase wide
+    $r2="RunOnce" nocase wide
+    $r3="schtasks /create" nocase
+    $r4="Software\\Microsoft\\Windows\\CurrentVersion\\Run" nocase wide
+    $r5="Startup" nocase wide
+    $r6="CreateService" nocase
+  condition:
+    2 of them
 }
+
 rule EncodedPayload {
-    meta: mitre="T1027"
-    strings:
-        $b64=/[A-Za-z0-9+\/]{200,}={0,2}/
-        $ps="FromBase64String" nocase
-    condition: any of them
+  meta: mitre="T1027"
+  strings:
+    $b64=/[A-Za-z0-9+\/]{200,}={0,2}/
+    $ps1="FromBase64String" nocase
+    $ps2="-enc" nocase
+    $ps3="IEX(" nocase
+    $ps4="Invoke-Expression" nocase
+  condition:
+    any of them
 }
+
 rule CredentialTheft {
-    meta: mitre="T1003"
-    strings:
-        $l1="lsass" nocase $l2="sekurlsa" nocase $l3=".aws/credentials" nocase
-    condition: 2 of them
+  meta: mitre="T1003"
+  strings:
+    $l1="lsass" nocase
+    $l2="sekurlsa" nocase
+    $l3=".aws/credentials" nocase
+    $l4="MiniDumpWriteDump" nocase
+    $l5="LogonPasswords" nocase
+    $l6="CredEnumerate" nocase
+  condition:
+    2 of them
+}
+
+rule LOLBins_Execution {
+  meta: mitre="T1218,T1105"
+  strings:
+    $a1="rundll32" nocase
+    $a2="regsvr32" nocase
+    $a3="mshta" nocase
+    $a4="certutil" nocase
+    $a5="bitsadmin" nocase
+    $a6="wmic" nocase
+    $a7="wscript" nocase
+    $a8="cscript" nocase
+  condition:
+    2 of them
+}
+
+rule PowerShell_Abuse {
+  meta: mitre="T1059.001,T1027"
+  strings:
+    $p1="powershell" nocase
+    $p2="Invoke-WebRequest" nocase
+    $p3="DownloadString" nocase
+    $p4="AmsiUtils" nocase
+    $p5="amsi.dll" nocase
+    $p6="System.Management.Automation" nocase
+    $p7="EncodedCommand" nocase
+  condition:
+    2 of them
+}
+
+rule DefenseEvasion_DisableSecurity {
+  meta: mitre="T1562"
+  strings:
+    $d1="Set-MpPreference" nocase
+    $d2="DisableRealtimeMonitoring" nocase
+    $d3="Add-MpPreference" nocase
+    $d4="wevtutil cl" nocase
+    $d5="bcdedit /set" nocase
+  condition:
+    2 of them
+}
+
+rule WMI_Abuse_Persistence {
+  meta: mitre="T1047,T1546"
+  strings:
+    $w1="wmic process call create" nocase
+    $w2="__EventFilter" nocase
+    $w3="CommandLineEventConsumer" nocase
+    $w4="ActiveScriptEventConsumer" nocase
+    $w5="powershell Get-WmiObject" nocase
+  condition:
+    2 of them
 }
 YARARULES
     echo "$f"
@@ -679,7 +981,7 @@ _yara_scan() {
     if [[ -n "$hits" ]]; then
         log_warn "YARA: $(echo "$hits" | wc -l | tr -d ' ') dopasowań:"
         while IFS= read -r hit; do
-            echo -e "    ${RED}▶${RESET} $hit"
+            echo -e " ${RED}▶${RESET} $hit"
             add_finding "static" 20 "YARA: $(echo "$hit" | awk '{print $1}')"
         done <<< "$hits"
     else
@@ -687,6 +989,12 @@ _yara_scan() {
     fi
     local custom="$HOST_TOOLS_DIR/custom_rules.yar"
     [[ -f "$custom" ]] && yara "$custom" "$target" 2>/dev/null | tee -a "$LOG_FILE" || true
+    if [[ -d "$YARA_RULES_DIR_DEFAULT" ]]; then
+        find "$YARA_RULES_DIR_DEFAULT" -type f \( -name '*.yar' -o -name '*.yara' \) | while IFS= read -r yr; do
+            [[ -f "$yr" ]] || continue
+            yara "$yr" "$target" 2>/dev/null | tee -a "$LOG_FILE" || true
+        done
+    fi
 }
 
 # ═══════════════════════════════════════════════════════════════
@@ -712,6 +1020,7 @@ check_host_tools() {
         read -r -p "Zainstalować Homebrew? [t/N] " c
         [[ "$c" =~ ^[tTyY]$ ]] && /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" </dev/null >> "$LOG_FILE" 2>&1
         [[ -f "/opt/homebrew/bin/brew" ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
+        [[ -f "/usr/local/bin/brew" ]] && eval "$(/usr/local/bin/brew shellenv 2>/dev/null || true)"
     }
     command -v qemu-system-aarch64 &>/dev/null || command -v qemu-system-x86_64 &>/dev/null \
         || check_and_install qemu-img qemu "wymagane dla VM" || true
@@ -737,7 +1046,9 @@ check_host_tools() {
     fi
     for pkg in pefile yara-python; do
         local imp="${pkg//-/_}"
-        python3 -c "import $imp" &>/dev/null 2>&1 && log_ok "pip: $pkg" || {
+        local pycmd="${HOST_PYTHON:-python3}"
+        local pipcmd="${HOST_PIP:-pip3}"
+        "$pycmd" -c "import $imp" &>/dev/null 2>&1 && log_ok "pip: $pkg" || {
             pip3 install "$pkg" --quiet 2>/dev/null \
                 || pip3 install "$pkg" --quiet --break-system-packages 2>/dev/null || true
             python3 -c "import $imp" &>/dev/null 2>&1 && log_ok "pip: $pkg" || log_warn "pip: $pkg (opcjonalne)"
@@ -1077,6 +1388,7 @@ analyze_dynamic_results() {
         fi
     done
     [[ $dyn_total -eq 0 ]] && log_ok "Brak IOC dynamicznych" || log_warn "$dyn_total kategorii IOC"
+    _sigma_scan "$txt_report"
     log_ok "Analiza dynamiczna — score: $DYNAMIC_RISK_SCORE"
 }
 
