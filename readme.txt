@@ -1,33 +1,29 @@
-Noriben QEMU Sandbox - v5.4 stable
+Noriben QEMU Sandbox - v5.5 modular
 
-Pliki:
-- noriben_qemu_sandbox_v5_4_stable.py
-- readme.txt
+Ta wersja przechodzi z jednego pliku na projekt wieloplikowy.
 
-Najważniejsze cechy wersji v5.4:
-1. Osobna sesja robocza dla każdej próbki w trybie batch.
-2. Stabilniejszy model kampanii z katalogiem campaign_YYYYMMDD_HHMMSS.
-3. Bezpieczniejsze przetwarzanie wielowątkowe przez izolację danych per-próbka.
-4. Raport HTML, findings.csv, timeline.csv i session_summary.json dla każdej próbki.
-5. campaign_summary.csv i campaign_summary.json dla całej kampanii.
-6. Mapowanie części detekcji do MITRE ATT&CK.
-7. SIGMA-like detekcje z raportów Noriben i logów pomocniczych.
-8. Próba parsowania EVTX przez python-evtx z fallbackiem tekstowym.
-9. Retry dla SSH/SCP i obsługa dual-VM.
-10. Tryby: --batch, --dry-run, --static-only, --dynamic-only, --preflight-only.
+Struktura:
+- noriben55/config.py      - konfiguracja i loader
+- noriben55/models.py      - modele danych sesji, findingów i VM
+- noriben55/detection.py   - dodatkowe detekcje i mapowanie MITRE
+- noriben55/reporting.py   - eksporty raportów
+- noriben55/orchestrator.py- główny runner kampanii i VM
+- noriben55/cli.py         - prosty entrypoint
+- tests/test_detection.py  - prosty test jednostkowy
+- config.yaml.example      - przykładowa konfiguracja
 
-Przykłady użycia:
-- Pojedyncza próbka:
-  python3 noriben_qemu_sandbox_v5_4_stable.py /path/sample.exe
+Dodatkowe detekcje względem 5.4:
+- AMSI bypass / AmsiUtils
+- Process injection: CreateRemoteThread, WriteProcessMemory, NtMapViewOfSection
+- Downloader activity: WinHttpOpen, URLDownloadToFile, InternetOpenUrl
+- Discovery: whoami, ipconfig, systeminfo, net user, tasklist, quser, nltest
+- Rozszerzona sieć: HTTP/HTTPS
+- Dodatkowe MITRE: T1055, T1070.001, T1105
 
-- Batch z katalogu:
-  python3 noriben_qemu_sandbox_v5_4_stable.py /path/samples --batch --dual-vm
+Uruchomienie:
+- python3 -m noriben55.cli /path/sample.exe
+- python3 -m noriben55.cli /path/samples --batch --dual-vm
+- python3 -m noriben55.cli --preflight-only
 
-- Tylko preflight:
-  python3 noriben_qemu_sandbox_v5_4_stable.py --preflight-only
-
-Uwagi:
-- Wymagane są QEMU, ssh, scp i qemu-img na hoście.
-- Windows VM powinien mieć dostępne OpenSSH i Python.
-- Noriben.py powinien być dostępny lokalnie w katalogu ~/NoribenTools lub wskazanym przez HOST_TOOLS_DIR.
-- To jest wersja bardziej stabilna architektonicznie, ale nadal wymaga testów integracyjnych w docelowym środowisku.
+Uwaga:
+To nadal wersja do testów integracyjnych z realnym środowiskiem QEMU/Windows.
