@@ -1,22 +1,24 @@
-import argparse, hashlib, os, re, shutil, signal, subprocess, threading, time
+import argparse, hashlib, os, re, shutil, signal, subprocess, threading, time, json
 from pathlib import Path
 from .config import load_config
 from .models import VMConfig, SampleSession, Finding
 from .detection import analyze_text
 from .reporting import export_session
+from .platform_qemu import detect_host, choose_accel, build_qemu_cmd
 
-VERSION = '5.5.0-modular'
+VERSION = '5.7.0-cross-platform'
 
 class App:
     def __init__(self):
         self.args = None
         self.cfg = None
+        self.host_info = detect_host()
         self.root_id = time.strftime('%Y%m%d_%H%M%S')
         self.root_dir = Path.home() / 'NoribenResults' / f'campaign_{self.root_id}'
         self.root_dir.mkdir(parents=True, exist_ok=True)
 
     def parse_args(self):
-        p = argparse.ArgumentParser(description='Noriben QEMU Sandbox v5.5 modular')
+        p = argparse.ArgumentParser(description='Noriben QEMU Sandbox v5.7 cross-platform')
         p.add_argument('sample', nargs='?')
         p.add_argument('--config')
         p.add_argument('--profile')
@@ -26,6 +28,7 @@ class App:
         p.add_argument('--preflight-only', action='store_true')
         p.add_argument('--static-only', action='store_true')
         p.add_argument('--dynamic-only', action='store_true')
+        p.add_argument('--show-host-info', action='store_true')
         self.args = p.parse_args()
         self.cfg = load_config(self.args.config)
         if self.args.profile: self.cfg['analysis_profile'] = self.args.profile
@@ -35,6 +38,8 @@ class App:
         for tool in ['python3','ssh','scp','qemu-img']:
             if not shutil.which(tool) and self.cfg['preflight_strict']:
                 raise SystemExit(f'Brak narzędzia: {tool}')
+        if self.args.show_host_info:
+            print(json.dumps(self.host_info, indent=2, ensure_ascii=False))
 
     def build_vm(self, name, arch, disk_key, snap_key, mem_key, smp_key, ssh_key, mon_key, sdir):
         return VMConfig(name, arch, Path(self.cfg[disk_key]), self.cfg[snap_key], self.cfg[mem_key], int(self.cfg[smp_key]), int(self.cfg[ssh_key]), int(self.cfg[mon_key]), sdir / f'{name}.pid', sdir / f'{name}.qemu.log')
@@ -58,9 +63,6 @@ class App:
         if self.args.dry_run: return 0, '', ''
         return self.run(['scp','-o','StrictHostKeyChecking=no','-o','UserKnownHostsFile=/dev/null','-o','LogLevel=ERROR','-P',str(vm.ssh_port),f"{self.cfg['vm_user']}@127.0.0.1:{src}",str(dst)])
 
-    def qemu_bin(self, arch):
-        return shutil.which('qemu-system-aarch64') if arch == 'aarch64' else shutil.which('qemu-system-x86_64')
-
     def revert_snapshot(self, vm):
         if self.args.dry_run: return
         rc,_,err = self.run(['qemu-img','snapshot','-a',vm.snapshot,str(vm.disk)])
@@ -68,16 +70,8 @@ class App:
 
     def start_vm(self, vm):
         if self.args.dry_run: return
-        qbin = self.qemu_bin(vm.arch)
-        if not qbin: raise RuntimeError(f'Brak QEMU dla {vm.arch}')
-        host_arch = os.uname().machine
-        if vm.arch == 'aarch64':
-            accel = ['-machine','virt,accel=hvf:tcg','-cpu','host'] if host_arch == 'arm64' else ['-machine','virt,accel=tcg','-cpu','max']
-            netdev = ['-device','virtio-net-device,netdev=net0']
-        else:
-            accel = ['-machine','q35,accel=tcg','-cpu','qemu64'] if host_arch == 'arm64' else ['-machine','q35,accel=hvf:tcg','-cpu','host']
-            netdev = ['-device','virtio-net-pci,netdev=net0']
-        cmd = [qbin,*accel,'-m',str(vm.mem),'-smp',str(vm.smp),'-drive',f'file={vm.disk},format=qcow2,if=virtio,cache=writeback','-netdev',f'user,id=net0,hostfwd=tcp:127.0.0.1:{vm.ssh_port}-:22,restrict=on',*netdev,'-monitor',f'tcp:127.0.0.1:{vm.monitor_port},server,nowait','-display','none','-daemonize','-pidfile',str(vm.pidfile)]
+        accel = choose_accel(self.host_info, vm.arch, self.cfg.get('qemu_accel_mode', 'auto'))
+        cmd = build_qemu_cmd(vm, accel, self.host_info)
         with vm.logfile.open('w', encoding='utf-8') as logf:
             proc = subprocess.run(cmd, stdout=logf, stderr=logf, text=True)
         if proc.returncode != 0: raise RuntimeError(f'Start VM failed {vm.name}')
@@ -162,7 +156,7 @@ class App:
                 self.collect_and_analyze(vm1, sample, session, 'vm1')
                 if self.cfg['dual_vm_mode'] and vm2.disk.exists():
                     self.collect_and_analyze(vm2, sample, session, 'vm2')
-        export_session(session, VERSION, self.cfg['analysis_profile'])
+        export_session(session, VERSION, self.cfg['analysis_profile'], self.host_info)
         return session
 
     def export_campaign(self, sessions):

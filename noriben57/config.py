@@ -9,6 +9,8 @@ DEFAULT_CONFIG = {
     'preflight_strict': True,
     'retry_count': 3,
     'retry_delay': 3,
+    'qemu_accel_mode': 'auto',
+    'platform_profile': 'auto',
     'qemu_disk': str(Path.home() / 'NoribenTools' / 'windows_arm_sandbox.qcow2'),
     'qemu_snapshot': 'Baseline_Clean',
     'qemu_mem': '16G',

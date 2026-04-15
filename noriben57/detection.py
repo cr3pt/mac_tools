@@ -7,7 +7,8 @@ MITRE_MAP = {
     'lsass': 'T1003.001', 'MiniDumpWriteDump': 'T1003.001', 'Set-MpPreference': 'T1562.001',
     'vssadmin': 'T1490', 'CurrentVersion\\Run': 'T1547.001', 'schtasks': 'T1053.005',
     'wevtutil': 'T1070.001', 'AmsiUtils': 'T1562.001', 'CreateRemoteThread': 'T1055',
-    'WriteProcessMemory': 'T1055', 'WinHttpOpen': 'T1105', 'URLDownloadToFile': 'T1105'
+    'WriteProcessMemory': 'T1055', 'WinHttpOpen': 'T1105', 'URLDownloadToFile': 'T1105',
+    'ipconfig': 'T1016', 'systeminfo': 'T1082', 'whoami': 'T1033', 'nltest': 'T1018'
 }
 
 SIGMA_RULES = {
@@ -18,6 +19,7 @@ SIGMA_RULES = {
     'Persistence': [r'CurrentVersion\\Run', r'CurrentVersion\\RunOnce', 'schtasks', 'Startup'],
     'Process Injection': ['VirtualAllocEx', 'WriteProcessMemory', 'CreateRemoteThread', 'NtMapViewOfSection'],
     'Downloader Activity': ['WinHttpOpen', 'InternetOpenUrl', 'URLDownloadToFile', 'DownloadFile'],
+    'Discovery Commands': ['whoami', 'ipconfig', 'systeminfo', 'tasklist', 'nltest', 'quser'],
 }
 
 PATTERNS = {
@@ -28,6 +30,7 @@ PATTERNS = {
     'Defense evasion': r'Set-MpPreference|DisableRealtimeMonitoring|vssadmin|wevtutil|AmsiUtils',
     'Downloads': r'WinHttpOpen|InternetOpenUrl|URLDownloadToFile|bitsadmin|certutil',
     'Discovery': r'whoami|ipconfig|systeminfo|net user|tasklist|quser|nltest',
+    'Credential Access': r'lsass|MiniDumpWriteDump|sekurlsa|LogonPasswords',
 }
 
 def map_mitre(text, session):
