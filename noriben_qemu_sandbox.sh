@@ -35,7 +35,7 @@
 # ============================================================
 
 set -euo pipefail
-VERSION="3.2.0-extended-verified-hardened-preflight"
+VERSION="4.0.0-reworked"
 
 # ─── Kolory ───────────────────────────────────────────────────
 RED='\033[0;31m'; YELLOW='\033[1;33m'; GREEN='\033[0;32m'
@@ -110,6 +110,205 @@ SIGMA_RULES_DIR_DEFAULT="${HOST_TOOLS_DIR}/sigma_rules"
 YARA_RULES_DIR_DEFAULT="${HOST_TOOLS_DIR}/yara_rules"
 
 PREFLIGHT_STRICT="${PREFLIGHT_STRICT:-true}"
+NONINTERACTIVE="${NONINTERACTIVE:-false}"
+ANALYSIS_PROFILE="${ANALYSIS_PROFILE:-balanced}"
+EXPORT_JSON="${EXPORT_JSON:-true}"
+EXPORT_CSV="${EXPORT_CSV:-true}"
+RUNTIME_ASSERTIONS="${RUNTIME_ASSERTIONS:-true}"
+CONFIG_FILE="${CONFIG_FILE:-}"
+TIMELINE_FILE=""
+SIGMA_HITS=()
+TIMELINE_EVENTS=()
+EVTX_SUMMARY=""
+
+
+
+load_config_file() {
+    [[ -z "$CONFIG_FILE" ]] && return 0
+    [[ -f "$CONFIG_FILE" ]] || { log_err "Brak pliku config: $CONFIG_FILE"; exit 1; }
+    local ext="${CONFIG_FILE##*.}"
+    case "$ext" in
+        yml|yaml|toml)
+            while IFS='=' read -r key value; do
+                [[ -z "$key" ]] && continue
+                key=$(echo "$key" | tr '.' '_' | tr '[:lower:]' '[:upper:]' | xargs)
+                value=$(echo "$value" | sed 's/^ *//; s/ *$//; s/^"//; s/"$//; s/^\x27//; s/\x27$//')
+                case "$key" in
+                    ANALYSIS_TIMEOUT|QEMU_DISK|QEMU_DISK_X86|QEMU_SNAPSHOT|QEMU_SNAPSHOT_X86|QEMU_MEM|QEMU_MEM_X86|QEMU_SMP|QEMU_SMP_X86|QEMU_SSH_PORT|QEMU_SSH_PORT_X86|ANALYSIS_PROFILE|DUAL_VM_MODE|VM_USER|VM_PASS)
+                        eval "$key=\"$value\""
+                        ;;
+                esac
+            done < <(
+                awk '
+                    /^[[:space:]]*#/ {next}
+                    /^[[:space:]]*$/ {next}
+                    /:/ && !/=/{sub(/:[[:space:]]*/,"="); print}
+                    /=/ {print}
+                ' "$CONFIG_FILE"
+            )
+            log_ok "Załadowano config: $CONFIG_FILE"
+            ;;
+        *)
+            log_warn "Nieobsługiwane rozszerzenie config: $ext"
+            ;;
+    esac
+}
+
+_sigma_match_line() {
+    local rule="$1" report="$2"
+    awk '
+        /CommandLine\|contains:/{flag=1; next}
+        flag && /^[[:space:]]*-[[:space:]]*/{sub(/^[[:space:]]*-[[:space:]]*/, "", $0); print; next}
+        flag && !/^[[:space:]]*-[[:space:]]*/{flag=0}
+    ' "$rule" | while IFS= read -r pat; do
+        [[ -z "$pat" ]] && continue
+        grep -iF "$pat" "$report" 2>/dev/null | grep -vE '^#|Noriben|Procmon|^-{3}' | head -3 || true
+    done | sort -u
+}
+
+collect_timeline_event() {
+    local source="$1" category="$2" line="$3"
+    [[ -z "$line" ]] && return 0
+    TIMELINE_EVENTS+=("$source|$category|$line")
+}
+
+write_timeline_file() {
+    TIMELINE_FILE="$SESSION_DIR/timeline.csv"
+    {
+        echo 'source,category,event'
+        for ev in "${TIMELINE_EVENTS[@]}"; do
+            IFS='|' read -r src cat evt <<EOF
+$ev
+EOF
+            printf '"%s","%s","%s"\n' "$src" "$cat" "$(printf '%s' "$evt" | sed 's/"/""/g')"
+        done
+    } > "$TIMELINE_FILE"
+    log_ok "Timeline: $TIMELINE_FILE"
+}
+
+_ingest_evtx_sysmon() {
+    local src_dir="$1"
+    local out="$src_dir/evtx_sysmon_summary.txt"
+    local count=0
+    : > "$out"
+    find "$src_dir" -type f \( -iname '*.evtx' -o -iname '*sysmon*' -o -iname '*.xml' \) 2>/dev/null | while IFS= read -r f; do
+        echo "=== $(basename "$f") ===" >> "$out"
+        strings -n 8 "$f" 2>/dev/null | grep -iE 'powershell|cmd.exe|rundll32|regsvr32|mshta|wmic|schtasks|lsass|vssadmin|defender|RunOnce|CurrentVersion\\Run' | head -40 >> "$out" || true
+    done
+    if [[ -s "$out" ]]; then
+        EVTX_SUMMARY="$out"
+        log_ok "Ingest EVTX/Sysmon: $out"
+    else
+        rm -f "$out"
+        log_warn "Brak danych EVTX/Sysmon do ingestu"
+    fi
+}
+
+apply_analysis_profile() {
+    case "$ANALYSIS_PROFILE" in
+        quick)
+            ANALYSIS_TIMEOUT="${ANALYSIS_TIMEOUT:-180}"
+            DUAL_VM_MODE="false"
+            ;;
+        deep)
+            ANALYSIS_TIMEOUT="${ANALYSIS_TIMEOUT:-900}"
+            ;;
+        ransomware)
+            ANALYSIS_TIMEOUT="${ANALYSIS_TIMEOUT:-600}"
+            ;;
+        lolbins)
+            ANALYSIS_TIMEOUT="${ANALYSIS_TIMEOUT:-420}"
+            ;;
+        balanced|*)
+            ANALYSIS_TIMEOUT="${ANALYSIS_TIMEOUT:-300}"
+            ;;
+    esac
+}
+
+runtime_assert_file() {
+    local f="$1" label="$2"
+    [[ "$RUNTIME_ASSERTIONS" != "true" ]] && return 0
+    if [[ -f "$f" ]]; then
+        log_ok "ASSERT: $label"
+        return 0
+    fi
+    log_err "ASSERT FAIL: $label ($f)"
+    return 1
+}
+
+runtime_assert_dir() {
+    local d="$1" label="$2"
+    [[ "$RUNTIME_ASSERTIONS" != "true" ]] && return 0
+    if [[ -d "$d" ]]; then
+        log_ok "ASSERT: $label"
+        return 0
+    fi
+    log_err "ASSERT FAIL: $label ($d)"
+    return 1
+}
+
+print_runtime_summary() {
+    echo ""
+    echo -e "${CYAN}${BOLD}TRYB ANALIZY${RESET}"
+    printf "  %-20s %s\n" "Profil:" "$ANALYSIS_PROFILE"
+    printf "  %-20s %s\n" "Dual-VM:" "$DUAL_VM_MODE"
+    printf "  %-20s %s\n" "Timeout:" "$ANALYSIS_TIMEOUT"
+    printf "  %-20s %s\n" "Noninteractive:" "$NONINTERACTIVE"
+    printf "  %-20s %s\n" "Eksport JSON:" "$EXPORT_JSON"
+    printf "  %-20s %s\n" "Eksport CSV:" "$EXPORT_CSV"
+}
+
+export_session_json() {
+    [[ "$EXPORT_JSON" != "true" ]] && return 0
+    local out="$SESSION_DIR/session_summary.json"
+    {
+        echo '{'
+        echo "  \"session_id\": \"$SESSION_ID\"," 
+        echo "  \"sample\": \"$(basename "${EXTRACTED_SAMPLE:-$SAMPLE_FILE}")\"," 
+        echo "  \"static_score\": ${STATIC_RISK_SCORE},"
+        echo "  \"dynamic_score\": ${DYNAMIC_RISK_SCORE},"
+        echo "  \"dual_vm\": \"${DUAL_VM_MODE}\"," 
+        echo '  "mitre": ['
+        local first=1
+        for t in "${MITRE_TECHNIQUES[@]:-}"; do
+            [[ -z "$t" ]] && continue
+            [[ $first -eq 0 ]] && echo ','
+            printf '    "%s"' "$(printf '%s' "$t" | sed 's/"/\\"/g')"
+            first=0
+        done
+        echo ''
+        echo '  ]'
+        echo '}'
+    } > "$out"
+    log_ok "JSON: $out"
+}
+
+export_findings_csv() {
+    [[ "$EXPORT_CSV" != "true" ]] && return 0
+    local out="$SESSION_DIR/findings.csv"
+    {
+        echo 'type,description'
+        for f in "${STATIC_FINDINGS[@]}"; do
+            [[ -n "$f" ]] && printf 'static,"%s"
+' "$(printf '%s' "$f" | sed 's/"/""/g')"
+        done
+        for f in "${DYNAMIC_FINDINGS[@]}"; do
+            [[ -n "$f" ]] && printf 'dynamic,"%s"
+' "$(printf '%s' "$f" | sed 's/"/""/g')"
+        done
+    } > "$out"
+    log_ok "CSV: $out"
+}
+
+export_session_csv() {
+    [[ "$EXPORT_CSV" != "true" ]] && return 0
+    local out="$SESSION_DIR/session_summary.csv"
+    {
+        echo 'session_id,sample,static_score,dynamic_score,dual_vm'
+        printf '"%s","%s",%s,%s,"%s"\n' "$SESSION_ID" "$(basename "${EXTRACTED_SAMPLE:-$SAMPLE_FILE}")" "$STATIC_RISK_SCORE" "$DYNAMIC_RISK_SCORE" "$DUAL_VM_MODE"
+    } > "$out"
+    log_ok "CSV: $out"
+}
 
 preflight_check() {
     section "PREFLIGHT — WERYFIKACJA HOSTA"
@@ -371,6 +570,7 @@ $partial"
         if [[ $hit_count -gt 0 ]]; then
             matches=$((matches + 1))
             log_warn "SIGMA: $title ($hit_count wzorców)"
+            SIGMA_HITS+=("$title")
             add_finding "dynamic" 25 "SIGMA: $title"
             case "$title" in
                 *PowerShell*) add_mitre "T1059.001 — PowerShell" ;;
@@ -382,6 +582,7 @@ $partial"
             echo -e " ${MAGENTA}▶${RESET} ${BOLD}SIGMA${RESET} $title"
             printf '%s\n' "$hits" | sed '/^$/d' | sort -u | head -6 | while IFS= read -r line; do
                 echo -e " ${YELLOW}→${RESET} $line"
+                collect_timeline_event "SIGMA" "$title" "$line"
                 echo " SIGMA[$title]: $line" >> "$LOG_FILE"
             done
         fi
@@ -513,6 +714,7 @@ try_extract_archive() {
     local archive="$1" dest_dir="$2" password="${3:-}"
     local arch_type; arch_type=$(detect_archive_type "$archive")
     mkdir -p "$dest_dir"
+    runtime_assert_dir "$dest_dir" "Katalog wyników istnieje"
     case "$arch_type" in
         zip)
             [[ -n "$password" ]] \
@@ -1345,6 +1547,7 @@ prepare_vm_environment() {
         Set-MpPreference -DisableRealtimeMonitoring \\\$true 2>\\\$null
         Add-MpPreference -ExclusionPath 'C:\\Malware','C:\\NoribenLogs','C:\\Tools' 2>\\\$null
     \"" >> "$LOG_FILE" 2>&1 || true
+    runtime_assert_dir "$HOST_TOOLS_DIR" "Host tools dir"
     log_ok "$label skonfigurowana"
 }
 
@@ -1422,7 +1625,7 @@ collect_results() {
     local local_zip="$dest_dir/results_noriben.zip"
     _vm_scp_from "$ssh_port" 'C:\NoribenLogs\results.zip' "$local_zip" && {
         unzip -q "$local_zip" -d "$dest_dir/" 2>/dev/null \
-            && { log_ok "Wyniki pobrane: $dest_dir"; rm -f "$local_zip"; } \
+            && { log_ok "Wyniki pobrane: $dest_dir"; runtime_assert_file "$dest_dir/$(find "$dest_dir" -maxdepth 1 -type f | head -1 | xargs basename 2>/dev/null || echo results)" "Pobrano przynajmniej jeden plik"; rm -f "$local_zip"; } \
             || log_warn "Błąd rozpakowywania — ZIP: $local_zip"
     } || log_err "Nie udało się skopiować wyników"
 }
@@ -1437,6 +1640,7 @@ analyze_dynamic_results() {
     }
     log_ok "Raport: $txt_report"
     head -60 "$txt_report" | tee -a "$LOG_FILE"
+    _ingest_evtx_sysmon "$src_dir"
 
     local dyn_keys=(
         "Nowe procesy" "Siec TCP/UDP" "Zapis rejestru"
@@ -1476,6 +1680,7 @@ analyze_dynamic_results() {
         fi
     done
     [[ $dyn_total -eq 0 ]] && log_ok "Brak IOC dynamicznych" || log_warn "$dyn_total kategorii IOC"
+    _sigma_scan "$txt_report"
     _sigma_scan "$txt_report"
     log_ok "Analiza dynamiczna — score: $DYNAMIC_RISK_SCORE"
 }
@@ -1986,7 +2191,11 @@ cleanup() {
 # ═══════════════════════════════════════════════════════════════
 
 main() {
+    load_config_file
+    apply_analysis_profile
+    print_runtime_summary
     preflight_check
+    $preflight_only && exit 0
     print_banner
 
     local setup_mode=false no_revert=false static_only=false dynamic_only=false
@@ -2265,6 +2474,12 @@ HELP
         echo ""
         echo -e "  📁 Wyniki: ${BOLD}$SESSION_DIR${RESET}"
         [[ ${#SESSION_REPORTS[@]} -gt 0 ]] && echo -e "  🌐 Raport:  ${BOLD}${SESSION_REPORTS[0]}${RESET}"
+        write_timeline_file
+        export_session_json
+        export_session_csv
+        export_findings_csv
+        [[ -n "$TIMELINE_FILE" ]] && echo -e "  ${DIM}Timeline: $TIMELINE_FILE${RESET}"
+        [[ -n "$EVTX_SUMMARY" ]] && echo -e "  ${DIM}EVTX/Sysmon: $EVTX_SUMMARY${RESET}"
         echo -e "  ${DIM}open '${SESSION_REPORTS[0]:-$SESSION_DIR}'${RESET}"
         echo ""
     fi
