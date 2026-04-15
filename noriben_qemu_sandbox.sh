@@ -35,7 +35,7 @@
 # ============================================================
 
 set -euo pipefail
-VERSION="3.2.0-extended-verified-hardened"
+VERSION="3.2.0-extended-verified-hardened-preflight"
 
 # ─── Kolory ───────────────────────────────────────────────────
 RED='\033[0;31m'; YELLOW='\033[1;33m'; GREEN='\033[0;32m'
@@ -108,6 +108,94 @@ ENABLE_HOST_VENV="${ENABLE_HOST_VENV:-true}"
 HOST_VENV_DIR="${HOST_VENV_DIR:-${HOME}/NoribenTools/.venv-noriben}"
 SIGMA_RULES_DIR_DEFAULT="${HOST_TOOLS_DIR}/sigma_rules"
 YARA_RULES_DIR_DEFAULT="${HOST_TOOLS_DIR}/yara_rules"
+
+PREFLIGHT_STRICT="${PREFLIGHT_STRICT:-true}"
+
+preflight_check() {
+    section "PREFLIGHT — WERYFIKACJA HOSTA"
+    local failed=0
+
+    local req_bins="python3 ssh scp nc curl"
+    for b in $req_bins; do
+        if command -v "$b" &>/dev/null; then
+            log_ok "Host tool: $b"
+        else
+            log_err "Brak wymaganego narzędzia hosta: $b"
+            failed=1
+        fi
+    done
+
+    if python3 -m venv --help >/dev/null 2>&1; then
+        log_ok "python3 venv: OK"
+    else
+        log_warn "python3 -m venv niedostępne"
+        [[ "$PREFLIGHT_STRICT" == "true" ]] && failed=1
+    fi
+
+    if command -v qemu-img &>/dev/null; then
+        log_ok "qemu-img: $(command -v qemu-img)"
+    else
+        log_err "Brak qemu-img"
+        failed=1
+    fi
+
+    if command -v qemu-system-aarch64 &>/dev/null || command -v qemu-system-x86_64 &>/dev/null; then
+        log_ok "QEMU binary: obecne"
+    else
+        log_err "Brak binariów QEMU"
+        failed=1
+    fi
+
+    if [[ -f "$QEMU_DISK" ]]; then
+        log_ok "Obraz VM1 istnieje: $QEMU_DISK"
+        qemu-img snapshot -l "$QEMU_DISK" 2>/dev/null | grep -q "$QEMU_SNAPSHOT" \
+            && log_ok "Snapshot VM1: $QEMU_SNAPSHOT" \
+            || { log_err "Brak snapshota VM1: $QEMU_SNAPSHOT"; failed=1; }
+    else
+        log_err "Brak obrazu VM1: $QEMU_DISK"
+        failed=1
+    fi
+
+    if [[ -f "$QEMU_DISK_X86" ]]; then
+        log_ok "Obraz VM2 istnieje: $QEMU_DISK_X86"
+        qemu-img snapshot -l "$QEMU_DISK_X86" 2>/dev/null | grep -q "$QEMU_SNAPSHOT_X86" \
+            && log_ok "Snapshot VM2: $QEMU_SNAPSHOT_X86" \
+            || log_warn "Brak snapshota VM2: $QEMU_SNAPSHOT_X86 (dual-VM może nie działać)"
+    else
+        log_warn "Brak obrazu VM2: $QEMU_DISK_X86 (dual-VM opcjonalne)"
+    fi
+
+    mkdir -p "$HOST_TOOLS_DIR" "$HOST_RESULTS_DIR" "$YARA_RULES_DIR_DEFAULT" "$SIGMA_RULES_DIR_DEFAULT"
+    [[ -f "$HOST_TOOLS_DIR/Noriben.py" ]] \
+        && log_ok "Noriben.py dostępny" \
+        || log_warn "Brak $HOST_TOOLS_DIR/Noriben.py — skrypt spróbuje pobrać plik automatycznie"
+
+    for p in "$QEMU_SSH_PORT" "$QEMU_MONITOR_PORT"; do
+        if lsof -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1; then
+            log_warn "Port zajęty: $p"
+        else
+            log_ok "Port wolny: $p"
+        fi
+    done
+
+    if command -v unzip &>/dev/null; then
+        log_ok "unzip: OK"
+    else
+        log_warn "Brak unzip — rozpakowanie wyników ZIP może wymagać fallbacku"
+    fi
+
+    if [[ $failed -ne 0 ]]; then
+        echo ""
+        echo -e "${RED}${BOLD}❌ PREFLIGHT FAILED${RESET}"
+        echo -e "${YELLOW}Host nie spełnia minimalnych wymagań. Popraw błędy i uruchom ponownie.${RESET}"
+        echo -e "${DIM}Jeśli chcesz tylko ostrzeżenia, uruchom z PREFLIGHT_STRICT=false${RESET}"
+        exit 1
+    fi
+
+    echo ""
+    echo -e "${GREEN}${BOLD}✅ PREFLIGHT OK${RESET}"
+}
+
 
 # ═══════════════════════════════════════════════════════════════
 # HELPERS
@@ -1898,6 +1986,7 @@ cleanup() {
 # ═══════════════════════════════════════════════════════════════
 
 main() {
+    preflight_check
     print_banner
 
     local setup_mode=false no_revert=false static_only=false dynamic_only=false
