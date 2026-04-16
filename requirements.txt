@@ -1,2 +1,6 @@
+fastapi
+uvicorn
+python-multipart
+yara-python
 python-evtx
 pytest
