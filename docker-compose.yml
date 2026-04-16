@@ -1,21 +1,59 @@
-
 version: "3.8"
 services:
   postgres:
-    image: postgres:15-alpine
+    image: postgres:15
+    platform: linux/amd64
+    environment: {POSTGRES_DB: noriben, POSTGRES_USER: noriben, POSTGRES_PASSWORD: noriben123}
     ports: ["5432:5432"]
-    environment:
-      POSTGRES_DB: noriben_soc
-      POSTGRES_USER: noriben
-      POSTGRES_PASSWORD: noriben
+    volumes: [noriben_pg:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD","pg_isready","-U","noriben"]
+      interval: 5s
+
   redis:
     image: redis:7-alpine
+    platform: linux/amd64
     ports: ["6379:6379"]
-  app:
-    build: .
+
+  api:
+    build: {context: ., dockerfile: Dockerfile, platform: linux/amd64}
     ports: ["8000:8000"]
-    volumes:
-      - .:/app
+    volumes: [".:/app"]
+    environment:
+      DATABASE_URL: postgresql://noriben:noriben123@postgres/noriben
+      CELERY_BROKER: redis://redis:6379/0
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: noriben
     depends_on:
-      - postgres
-      - redis
+      postgres: {condition: service_healthy}
+
+  celery:
+    build: {context: ., dockerfile: Dockerfile, platform: linux/amd64}
+    command: celery -A noriben_soc.tasks worker --loglevel=info --concurrency=4
+    volumes: [".:/app"]
+    environment:
+      DATABASE_URL: postgresql://noriben:noriben123@postgres/noriben
+      CELERY_BROKER: redis://redis:6379/0
+    depends_on: [redis, postgres, qemu]
+
+  qemu:
+    image: qemuwm/win10-noriben:latest
+    platform: linux/amd64
+    privileged: true
+    volumes: ["./vms:/shared"]
+    ports: ["5901:5900","4444:4444"]
+    environment: {NORIBEN_PATH: /shared/noriben_qemu_sandbox.sh}
+
+  grafana:
+    image: grafana/grafana:latest
+    ports: ["3000:3000"]
+    environment: {GF_SECURITY_ADMIN_PASSWORD: admin}
+    volumes: [noriben_grafana:/var/lib/grafana,"./grafana/provisioning:/etc/grafana/provisioning"]
+
+  vault:
+    image: vault:1.15
+    cap_add: [IPC_LOCK]
+    ports: ["8200:8200"]
+    environment: {VAULT_DEV_ROOT_TOKEN_ID: noriben, VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"}
+
+volumes: {noriben_pg: {}, noriben_redis: {}, noriben_grafana: {}}

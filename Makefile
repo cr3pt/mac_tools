@@ -1,12 +1,11 @@
-
-sync-rules:
-	python3 addons/sync_sigmahq.py
-
-migrate:
-	cd noriben_soc && alembic upgrade head
-
-ui:
-	cp browser_ui/* noriben_soc/
-
+.PHONY: deploy dev migrate test clean
+deploy:
+	./deploy.sh
 dev:
-	make sync-rules migrate ui && docker-compose up
+	uvicorn noriben_soc.api.main:app --reload --host 0.0.0.0
+migrate:
+	alembic upgrade head
+test:
+	pytest tests/ -v
+clean:
+	docker-compose down -v && docker volume prune -f

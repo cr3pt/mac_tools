@@ -1,0 +1,9 @@
+apiVersion: 1
+datasources:
+  - name: Noriben_PG
+    type: postgres
+    url: postgres:5432
+    database: noriben
+    user: noriben
+    secureJsonData: {password: noriben123}
+    jsonData: {sslmode: disable}
