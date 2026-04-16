@@ -1,1 +1,1 @@
-__version__ = '7.1.0-soc-starter'
+__version__ = '9.0.0-deployment-foundation'

@@ -1,16 +1,15 @@
-Noriben SOC Starter 7.1
+Noriben SOC Platform 9.0
 
-To jest działający starter backendu SOC-grade:
-- FastAPI API
-- pipeline analizy pliku
-- canonical events z parsera tekstowego
-- IOC extraction
-- YARA integration (yara-python if available, otherwise fallback)
-- SIGMA matching
-- persistent store sesji
-- prosty dashboard WWW
+Wersja 9.0 zawiera foundation pod wdrożenie:
+- konfigurowalna warstwa DB
+- ORM models gotowe pod PostgreSQL
+- auth z bcrypt-ready fallback
+- queue backend gotowy do wymiany na Celery/Redis
+- metrics endpoint pod Prometheus
+- observability/log aggregation foundation
+- secret backend wrapper i isolation layer
 
-Uruchomienie:
+Uruchomienie developerskie:
 1. pip install -r requirements.txt
 2. PYTHONPATH=. uvicorn noriben_soc.api.app:app --reload
-3. otwórz http://127.0.0.1:8000/
+3. POST /auth/login i używaj x-session-token

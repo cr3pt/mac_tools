@@ -1,39 +1,33 @@
-from dataclasses import dataclass, field, asdict
-from typing import Optional, List, Dict, Any
-
-@dataclass
-class CanonicalEvent:
-    event_id: str
-    timestamp: str
-    source: str
-    event_type: str
-    host: Dict[str, Any]
-    process: Dict[str, Any]
-    file: Dict[str, Any] = field(default_factory=dict)
-    registry: Dict[str, Any] = field(default_factory=dict)
-    network: Dict[str, Any] = field(default_factory=dict)
-    raw: Any = None
-    tags: List[str] = field(default_factory=list)
-    def to_dict(self): return asdict(self)
-
-@dataclass
-class SessionRecord:
-    session_id: str
-    sample_name: str
-    sha256: str
-    status: str = 'new'
-    assignee: Optional[str] = None
-    severity: str = 'low'
-    confidence: str = 'low'
-    static_score: int = 0
-    dynamic_score: int = 0
-    mitre: List[str] = field(default_factory=list)
-    iocs: List[Dict[str, Any]] = field(default_factory=list)
-    findings: List[Dict[str, Any]] = field(default_factory=list)
-    events: List[CanonicalEvent] = field(default_factory=list)
-    artifacts: List[Dict[str, Any]] = field(default_factory=list)
-    meta: Dict[str, Any] = field(default_factory=dict)
-    def to_dict(self):
-        d = asdict(self)
-        d['events'] = [e.to_dict() for e in self.events]
-        return d
+from sqlalchemy.orm import declarative_base, Mapped, mapped_column
+from sqlalchemy import String, Integer, Text
+Base = declarative_base()
+class User(Base):
+    __tablename__ = 'users'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(120), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(50))
+class AuthSession(Base):
+    __tablename__ = 'auth_sessions'
+    token: Mapped[str] = mapped_column(String(255), primary_key=True)
+    username: Mapped[str] = mapped_column(String(120))
+    role: Mapped[str] = mapped_column(String(50))
+    expires_at: Mapped[str] = mapped_column(String(64))
+class AnalysisSession(Base):
+    __tablename__ = 'analysis_sessions'
+    session_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    sample_name: Mapped[str] = mapped_column(String(255))
+    sha256: Mapped[str] = mapped_column(String(128))
+    status: Mapped[str] = mapped_column(String(64))
+    assignee: Mapped[str] = mapped_column(String(120), nullable=True)
+    severity: Mapped[str] = mapped_column(String(32))
+    confidence: Mapped[str] = mapped_column(String(32))
+    static_score: Mapped[int] = mapped_column(Integer)
+    dynamic_score: Mapped[int] = mapped_column(Integer)
+    mitre_json: Mapped[str] = mapped_column(Text)
+    iocs_json: Mapped[str] = mapped_column(Text)
+    findings_json: Mapped[str] = mapped_column(Text)
+    events_json: Mapped[str] = mapped_column(Text)
+    artifacts_json: Mapped[str] = mapped_column(Text)
+    comments_json: Mapped[str] = mapped_column(Text)
+    meta_json: Mapped[str] = mapped_column(Text)

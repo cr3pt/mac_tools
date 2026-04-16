@@ -4,3 +4,5 @@ python-multipart
 yara-python
 python-evtx
 pytest
+sqlalchemy
+bcrypt
