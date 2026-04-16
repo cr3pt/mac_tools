@@ -7,12 +7,6 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(120), unique=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(50))
-class AuthSession(Base):
-    __tablename__ = 'auth_sessions'
-    token: Mapped[str] = mapped_column(String(255), primary_key=True)
-    username: Mapped[str] = mapped_column(String(120))
-    role: Mapped[str] = mapped_column(String(50))
-    expires_at: Mapped[str] = mapped_column(String(64))
 class AnalysisSession(Base):
     __tablename__ = 'analysis_sessions'
     session_id: Mapped[str] = mapped_column(String(255), primary_key=True)
@@ -31,3 +25,9 @@ class AnalysisSession(Base):
     artifacts_json: Mapped[str] = mapped_column(Text)
     comments_json: Mapped[str] = mapped_column(Text)
     meta_json: Mapped[str] = mapped_column(Text)
+class JobRecord(Base):
+    __tablename__ = 'job_records'
+    job_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    celery_id: Mapped[str] = mapped_column(String(255))
+    trace_id: Mapped[str] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(64))

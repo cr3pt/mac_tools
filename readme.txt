@@ -1,15 +1,15 @@
-Noriben SOC Platform 9.0
+Noriben SOC Platform 10.1
 
-Wersja 9.0 zawiera foundation pod wdrożenie:
-- konfigurowalna warstwa DB
-- ORM models gotowe pod PostgreSQL
-- auth z bcrypt-ready fallback
-- queue backend gotowy do wymiany na Celery/Redis
-- metrics endpoint pod Prometheus
-- observability/log aggregation foundation
-- secret backend wrapper i isolation layer
+Production closure foundation:
+- durable job tracking in DB
+- Celery retries/backoff/jitter
+- JWT bearer auth with logout/revocation
+- PostgreSQL-first SQLAlchemy backend
+- Redis/Celery production wiring
+- metrics/logs/traces endpoints
 
-Uruchomienie developerskie:
+Uruchomienie:
 1. pip install -r requirements.txt
-2. PYTHONPATH=. uvicorn noriben_soc.api.app:app --reload
-3. POST /auth/login i używaj x-session-token
+2. ustaw NORIBEN_DB_URL, NORIBEN_REDIS_URL, NORIBEN_JWT_SECRET
+3. uruchom worker: celery -A noriben_soc.core.tasks worker -Q analysis --loglevel=info
+4. uruchom API: PYTHONPATH=. uvicorn noriben_soc.api.app:app --reload

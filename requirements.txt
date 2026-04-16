@@ -6,3 +6,6 @@ python-evtx
 pytest
 sqlalchemy
 bcrypt
+psycopg2-binary
+celery
+redis

@@ -1,11 +1,12 @@
 import json
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
-from .models import Base, User, AuthSession, AnalysisSession
+from .models import Base, User, AnalysisSession, JobRecord
 from .config import settings
 class DB:
     def __init__(self, url=None):
-        self.engine = create_engine(url or settings.db_url, future=True)
+        self.url = url or settings.db_url
+        self.engine = create_engine(self.url, future=True)
         self.Session = sessionmaker(self.engine, future=True)
         Base.metadata.create_all(self.engine)
     def ensure_user(self, username, password_hash, role):
@@ -16,12 +17,17 @@ class DB:
         with self.Session() as s:
             obj = s.execute(select(User).where(User.username == username)).scalar_one_or_none()
             return {'username':obj.username,'password_hash':obj.password_hash,'role':obj.role} if obj else None
-    def save_auth(self, token, username, role, expires_at):
-        with self.Session() as s: s.add(AuthSession(token=token, username=username, role=role, expires_at=expires_at)); s.commit()
-    def get_auth(self, token):
+    def upsert_job(self, job_id, celery_id, trace_id, status):
         with self.Session() as s:
-            obj = s.execute(select(AuthSession).where(AuthSession.token == token)).scalar_one_or_none()
-            return {'username':obj.username,'role':obj.role,'expires_at':obj.expires_at} if obj else None
+            obj = s.execute(select(JobRecord).where(JobRecord.job_id == job_id)).scalar_one_or_none()
+            if not obj: s.add(JobRecord(job_id=job_id, celery_id=celery_id, trace_id=trace_id, status=status))
+            else:
+                obj.celery_id = celery_id; obj.trace_id = trace_id; obj.status = status
+            s.commit()
+    def get_job(self, job_id):
+        with self.Session() as s:
+            obj = s.execute(select(JobRecord).where(JobRecord.job_id == job_id)).scalar_one_or_none()
+            return {'job_id':obj.job_id,'celery_id':obj.celery_id,'trace_id':obj.trace_id,'status':obj.status} if obj else None
     def upsert_analysis(self, data):
         with self.Session() as s:
             obj = s.execute(select(AnalysisSession).where(AnalysisSession.session_id == data['session_id'])).scalar_one_or_none()

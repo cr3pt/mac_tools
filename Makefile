@@ -4,5 +4,8 @@ lint:
 test:
 	PYTHONPATH=. pytest -q
 
-run:
+run-api:
 	PYTHONPATH=. uvicorn noriben_soc.api.app:app --reload
+
+run-worker:
+	PYTHONPATH=. celery -A noriben_soc.core.tasks worker -Q analysis --loglevel=info

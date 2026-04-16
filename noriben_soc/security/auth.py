@@ -1,5 +1,6 @@
-import secrets, datetime, hashlib
+import hashlib
 from fastapi import Header, HTTPException
+from .jwt_service import issue_token, verify_token, revoke_token
 from ..core.db import DB
 try:
     import bcrypt
@@ -23,16 +24,19 @@ def ensure_default_users(db: DB):
 def login(db: DB, username: str, password: str):
     u = db.get_user(username)
     if not u or not verify_password(password, u['password_hash']): return None
-    token = secrets.token_hex(24)
-    exp = (datetime.datetime.utcnow() + datetime.timedelta(hours=12)).isoformat() + 'Z'
-    db.save_auth(token, u['username'], u['role'], exp)
-    return {'token': token, 'username': u['username'], 'role': u['role'], 'expires_at': exp}
+    token = issue_token(u['username'], u['role'])
+    return {'token': token, 'username': u['username'], 'role': u['role']}
 
-def require_role(db: DB, min_role):
+def logout(token: str):
+    revoke_token(token)
+
+def require_role(min_role):
     order = {'tier1':1, 'tier2':2, 'hunter':3, 'admin':4}
-    def dep(x_session_token: str = Header(default='')):
-        sess = db.get_auth(x_session_token)
-        if not sess: raise HTTPException(status_code=401, detail='invalid session')
-        if order.get(sess['role'],0) < order[min_role]: raise HTTPException(status_code=403, detail='insufficient role')
-        return {'user': sess['username'], 'role': sess['role']}
+    def dep(authorization: str = Header(default='')):
+        if not authorization.startswith('Bearer '): raise HTTPException(status_code=401, detail='missing bearer token')
+        token = authorization.split(' ',1)[1]
+        payload = verify_token(token)
+        if not payload: raise HTTPException(status_code=401, detail='invalid or expired token')
+        if order.get(payload['role'],0) < order[min_role]: raise HTTPException(status_code=403, detail='insufficient role')
+        return {'user': payload['sub'], 'role': payload['role'], 'token': token}
     return dep

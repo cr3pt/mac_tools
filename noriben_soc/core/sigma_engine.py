@@ -19,15 +19,14 @@ def eval_selection(values, text):
     for raw in values:
         v=raw.strip('"').strip("'")
         if not v: continue
-        needle=v.replace('*','').lower()
-        checks.append(needle in low)
+        needle=v.replace('*','').lower(); checks.append(needle in low)
     return any(checks)
 
 def eval_condition(rule, text):
     res={name: eval_selection(vals, text) for name, vals in rule['detections'].items()}
     expr=rule['condition']
-    for name,val in sorted(res.items(), key=lambda x: -len(x[0])):
-        expr=re.sub(rf'\b{name}\b', str(val), expr)
+    for name,val in sorted(res.items(), key=lambda x: -len(x[0])): expr=re.sub(rf'\b{name}\b', str(val), expr)
+    expr = expr.replace('1 of them', str(any(res.values())))
     try: return bool(eval(expr, {'__builtins__': {}}, {})), res
     except Exception: return any(res.values()), res
 

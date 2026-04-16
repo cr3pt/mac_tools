@@ -1,16 +1,10 @@
-# Deployment Notes 9.0
+# Deployment Notes 10.1
 
-Cel tej wersji to foundation pod wdrożenie:
-- SQLAlchemy + configurable DB URL
-- bcrypt-ready auth fallback
-- metrics endpoint pod Prometheus
-- local queue backend gotowy do zastąpienia przez Celery/Redis
-- secret backend wrapper
-- Alembic-ready structure
+Domknięcia względem 10.0:
+- durable job table w DB
+- Celery retry/backoff/jitter config
+- logout i prosty JWT revocation
+- lepszy status tracking z AsyncResult + DB
+- uporządkowany production closure scaffold
 
-Kolejne ruchy produkcyjne:
-- PostgreSQL jako obowiązkowy backend
-- Alembic migrations
-- Redis/RabbitMQ + Celery workers
-- OpenTelemetry exporter
-- Vault integration
+Do pełnego zamknięcia enterprise nadal potrzeba m.in. gotowych Alembic revisions, pełnego Vault clienta i bogatszego SIGMA engine.
