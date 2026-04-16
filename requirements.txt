@@ -9,3 +9,6 @@ bcrypt
 psycopg2-binary
 celery
 redis
+hvac
+pyyaml
+alembic

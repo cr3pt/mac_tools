@@ -1,38 +1,52 @@
 from pathlib import Path
 import re
-
-def parse_sigma_rule(path):
-    text = Path(path).read_text(encoding='utf-8', errors='ignore')
-    title = Path(path).stem; detections = {}; condition = 'selection'; in_detection=False; current=None
-    for line in text.splitlines():
-        st=line.strip()
-        if st.lower().startswith('title:'): title=st.split(':',1)[1].strip()
-        elif st.lower().startswith('detection:'): in_detection=True
-        elif in_detection and st.lower().startswith('condition:'): condition=st.split(':',1)[1].strip()
-        elif in_detection and re.match(r'^[A-Za-z0-9_]+:\s*$', st): current=st[:-1]; detections[current]=[]
-        elif in_detection and current and ':' in st:
-            _,val=st.split(':',1); detections[current].append(val.strip())
-    return {'title':title,'detections':detections,'condition':condition}
-
-def eval_selection(values, text):
-    low=text.lower(); checks=[]
-    for raw in values:
-        v=raw.strip('"').strip("'")
-        if not v: continue
-        needle=v.replace('*','').lower(); checks.append(needle in low)
-    return any(checks)
-
-def eval_condition(rule, text):
-    res={name: eval_selection(vals, text) for name, vals in rule['detections'].items()}
-    expr=rule['condition']
-    for name,val in sorted(res.items(), key=lambda x: -len(x[0])): expr=re.sub(rf'\b{name}\b', str(val), expr)
-    expr = expr.replace('1 of them', str(any(res.values())))
-    try: return bool(eval(expr, {'__builtins__': {}}, {})), res
-    except Exception: return any(res.values()), res
-
-def run_sigma_on_text(text, rules_dir):
-    hits=[]; sdir=Path(rules_dir)/'sigma'
-    for p in sorted(sdir.glob('*.yml')) if sdir.exists() else []:
-        rule=parse_sigma_rule(p); ok,res=eval_condition(rule,text)
-        if ok: hits.append({'title': rule['title'], 'matched': [k for k,v in res.items() if v], 'condition': rule['condition']})
+import yaml
+from typing import List, Dict, Any
+class SigmaRule:
+    def __init__(self, path: Path):
+        with open(path) as f:
+            data = yaml.safe_load(f)
+        self.title = data.get("title", "")
+        self.description = data.get("description", "")
+        self.tags = data.get("tags", [])
+        self.level = data.get("level", "medium")
+        self.logsource = data.get("logsource", {})
+        self.detection = data.get("detection", {})
+        self.fields = data.get("fields", {})
+        self.condition = data.get("condition", "selection")
+    def evaluate(self, event: Dict[str, Any]) -> bool:
+        detection = self.detection
+        matches = {}
+        for field, values in detection.items():
+            if isinstance(values, list):
+                field_matches = any(self._match_value(v, event.get(field, "")) for v in values)
+            else:
+                field_matches = self._match_value(values, event.get(field, ""))
+            matches[field] = field_matches
+        return self._evaluate_condition(self.condition, matches)
+    def _match_value(self, pattern: str, value: str) -> bool:
+        if isinstance(pattern, str):
+            if pattern.startswith("*") or pattern.endswith("*"):
+                return pattern.replace("*", "").lower() in value.lower()
+            return pattern.lower() in value.lower()
+        return False
+    def _evaluate_condition(self, condition: str, matches: Dict[str, bool]) -> bool:
+        expr = condition
+        for name, match in matches.items():
+            expr = expr.replace(name, str(match))
+        expr = expr.replace("1 of them", str(any(matches.values())))
+        try:
+            return bool(eval(expr, {"__builtins__": {}}, {}))
+        except:
+            return any(matches.values())
+def run_sigma_on_text(text: str, rules_dir: Path) -> List[Dict[str, Any]]:
+    hits = []
+    sdir = rules_dir / "sigma"
+    for p in sdir.glob("*.yml"):
+        try:
+            rule = SigmaRule(p)
+            if rule.evaluate({"CommandLine": text}):
+                hits.append({"title": rule.title, "description": rule.description, "level": rule.level, "tags": rule.tags})
+        except Exception:
+            pass
     return hits

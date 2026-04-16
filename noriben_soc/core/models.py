@@ -1,14 +1,14 @@
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column
-from sqlalchemy import String, Integer, Text
+from sqlalchemy import String, Integer, Text, DateTime
 Base = declarative_base()
 class User(Base):
-    __tablename__ = 'users'
+    __tablename__ = "users"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     username: Mapped[str] = mapped_column(String(120), unique=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(50))
 class AnalysisSession(Base):
-    __tablename__ = 'analysis_sessions'
+    __tablename__ = "analysis_sessions"
     session_id: Mapped[str] = mapped_column(String(255), primary_key=True)
     sample_name: Mapped[str] = mapped_column(String(255))
     sha256: Mapped[str] = mapped_column(String(128))
@@ -22,12 +22,11 @@ class AnalysisSession(Base):
     iocs_json: Mapped[str] = mapped_column(Text)
     findings_json: Mapped[str] = mapped_column(Text)
     events_json: Mapped[str] = mapped_column(Text)
-    artifacts_json: Mapped[str] = mapped_column(Text)
-    comments_json: Mapped[str] = mapped_column(Text)
     meta_json: Mapped[str] = mapped_column(Text)
 class JobRecord(Base):
-    __tablename__ = 'job_records'
+    __tablename__ = "job_records"
     job_id: Mapped[str] = mapped_column(String(255), primary_key=True)
     celery_id: Mapped[str] = mapped_column(String(255))
     trace_id: Mapped[str] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[DateTime] = mapped_column(DateTime)

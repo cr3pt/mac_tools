@@ -1,5 +1,0 @@
-title: Clear Event Logs
-detection:
-  selection:
-    CommandLine|contains: wevtutil
-  condition: selection

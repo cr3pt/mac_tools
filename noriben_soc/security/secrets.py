@@ -1,14 +1,16 @@
-import os, json, urllib.request
+import os, json
+try:
+    import hvac
+except ImportError:
+    hvac = None
 from ..core.config import settings
 class SecretsProvider:
     def get(self, key, default=None):
-        if settings.secret_backend == 'env': return os.environ.get(key, default)
-        if settings.secret_backend == 'vault-http' and settings.vault_addr and settings.vault_token:
-            req = urllib.request.Request(settings.vault_addr.rstrip('/') + '/v1/secret/data/noriben', headers={'X-Vault-Token': settings.vault_token})
-            try:
-                with urllib.request.urlopen(req, timeout=3) as resp:
-                    data = json.loads(resp.read().decode('utf-8'))
-                    return data.get('data', {}).get('data', {}).get(key, default)
-            except Exception:
-                return default
+        if settings.secret_backend == "env": return os.environ.get(key, default)
+        if settings.secret_backend == "vault" and hvac and settings.vault_addr and settings.vault_token:
+            client = hvac.Client(url=settings.vault_addr)
+            client.token = settings.vault_token
+            if client.is_authenticated():
+                secret = client.secrets.kv.v2.read_secret_version(path="noriben")
+                return secret["data"]["data"].get(key, default)
         return default

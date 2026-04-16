@@ -1,5 +1,0 @@
-title: Suspicious PowerShell
-detection:
-  selection:
-    CommandLine|contains: powershell
-  condition: selection
