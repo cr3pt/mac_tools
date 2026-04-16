@@ -7,7 +7,7 @@ from .reporting import export_session
 from .platform_qemu import detect_host, choose_accel, build_qemu_cmd, recommend_profile
 from .prepare import prepare_environment
 
-VERSION = '5.8.0-prepare-cross-platform'
+VERSION = '5.9.0-guest-checklist'
 
 class App:
     def __init__(self):
@@ -19,7 +19,7 @@ class App:
         self.root_dir.mkdir(parents=True, exist_ok=True)
 
     def parse_args(self):
-        p = argparse.ArgumentParser(description='Noriben QEMU Sandbox v5.8 prepare cross-platform')
+        p = argparse.ArgumentParser(description='Noriben QEMU Sandbox v5.9 guest checklist')
         p.add_argument('sample', nargs='?')
         p.add_argument('--config')
         p.add_argument('--profile')
@@ -177,8 +177,8 @@ class App:
     def main(self):
         self.parse_args()
         if self.args.prepare:
-            prep_file, plan = prepare_environment(self.cfg)
-            print(json.dumps({'prepare_file': str(prep_file), 'plan': plan}, indent=2, ensure_ascii=False))
+            prep_file, prep_script, guest_file, plan = prepare_environment(self.cfg)
+            print(json.dumps({'prepare_file': str(prep_file), 'prepare_script': str(prep_script), 'guest_checklist_file': str(guest_file), 'plan': plan}, indent=2, ensure_ascii=False))
             return
         self.preflight()
         if self.args.preflight_only: return

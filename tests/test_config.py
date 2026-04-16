@@ -1,4 +1,4 @@
-from noriben58.config import load_config
+from noriben59.config import load_config
 
 def test_load_config_kv(tmp_path):
     cfg_file = tmp_path / 'cfg.txt'

@@ -2,13 +2,11 @@ import re
 from .models import Finding, TimelineEvent
 
 MITRE_MAP = {
-    'powershell': 'T1059.001', 'rundll32': 'T1218.011', 'regsvr32': 'T1218.010', 'mshta': 'T1218.005',
-    'wmic': 'T1047', 'certutil': 'T1105', 'bitsadmin': 'T1197', 'lsass': 'T1003.001',
-    'MiniDumpWriteDump': 'T1003.001', 'Set-MpPreference': 'T1562.001', 'vssadmin': 'T1490',
-    'CurrentVersion\\Run': 'T1547.001', 'schtasks': 'T1053.005', 'wevtutil': 'T1070.001',
-    'AmsiUtils': 'T1562.001', 'CreateRemoteThread': 'T1055', 'WriteProcessMemory': 'T1055',
-    'WinHttpOpen': 'T1105', 'URLDownloadToFile': 'T1105', 'ipconfig': 'T1016', 'systeminfo': 'T1082',
-    'whoami': 'T1033', 'nltest': 'T1018', 'tasklist': 'T1057', 'quser': 'T1033'
+    'powershell': 'T1059.001', 'rundll32': 'T1218.011', 'regsvr32': 'T1218.010', 'mshta': 'T1218.005', 'wmic': 'T1047',
+    'certutil': 'T1105', 'bitsadmin': 'T1197', 'lsass': 'T1003.001', 'MiniDumpWriteDump': 'T1003.001', 'Set-MpPreference': 'T1562.001',
+    'vssadmin': 'T1490', 'CurrentVersion\\Run': 'T1547.001', 'schtasks': 'T1053.005', 'wevtutil': 'T1070.001', 'AmsiUtils': 'T1562.001',
+    'CreateRemoteThread': 'T1055', 'WriteProcessMemory': 'T1055', 'WinHttpOpen': 'T1105', 'URLDownloadToFile': 'T1105',
+    'ipconfig': 'T1016', 'systeminfo': 'T1082', 'whoami': 'T1033', 'nltest': 'T1018', 'tasklist': 'T1057', 'quser': 'T1033'
 }
 SIGMA_RULES = {
     'Suspicious PowerShell': ['powershell', '-enc', 'FromBase64String', 'DownloadString', 'Invoke-WebRequest'],

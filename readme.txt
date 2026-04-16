@@ -1,32 +1,20 @@
-Noriben QEMU Sandbox - v5.8 prepare cross-platform
+Noriben QEMU Sandbox - v5.9 guest checklist
 
-Najważniejsze nowości:
-- opcja --prepare do przygotowania środowiska hosta
-- prepare tworzy katalogi host_tools_dir i host_results_dir
-- prepare zapisuje plan do prepare_plan.json
-- rekomendacja profilu hosta: macos-arm64, ubuntu-x86_64, ubuntu-arm64 lub generic
-- rozwinięta warstwa cross-platform dla QEMU
-- dodatkowe testy dla prepare
+Nowości względem 5.8.1:
+- prepare generuje już trzy artefakty: prepare_plan.json, prepare_commands.sh i windows_guest_checklist.txt
+- plan przygotowania obejmuje teraz host oraz checklistę dla Windows guest
+- checklista guest uwzględnia OpenSSH Server, Python, Noriben, katalogi robocze, firewall i snapshot
+- nadal zachowana jest logika cross-platform dla Ubuntu i macOS
 
-Czy działa na Ubuntu i macOS?
-Tak, projekt jest rozwijany właśnie w tym kierunku.
+Co robi --prepare w 5.9:
+1. wykrywa hosta i rekomendowany profil
+2. sprawdza narzędzia hosta
+3. tworzy katalogi hostowe
+4. zapisuje komendy instalacyjne hosta
+5. generuje checklistę przygotowania Windows guest
 
-Co robi prepare:
-1. wykrywa platformę i architekturę hosta
-2. sprawdza dostępność narzędzi: python3, ssh, scp, qemu-img, qemu-system-aarch64, qemu-system-x86_64
-3. tworzy katalogi na narzędzia i wyniki
-4. wybiera rekomendowany profil platformy
-5. zapisuje plan przygotowania do JSON
+Przykład:
+PYTHONPATH=. python3 -m noriben59.cli --prepare
 
-Przykłady:
-- przygotowanie środowiska:
-  PYTHONPATH=. python3 -m noriben58.cli --prepare
-- host info:
-  PYTHONPATH=. python3 -m noriben58.cli --show-host-info --preflight-only
-- pojedyncza próbka:
-  PYTHONPATH=. python3 -m noriben58.cli /path/sample.exe
-- batch:
-  PYTHONPATH=. python3 -m noriben58.cli /path/samples --batch --dual-vm
-
-Uwaga praktyczna:
-Opcja prepare nie instaluje pakietów systemowych automatycznie. Przygotowuje plan, katalogi i podpowiedzi, ale instalację QEMU/OpenSSH/Python trzeba wykonać odpowiednio dla Ubuntu lub macOS.
+Dlaczego to pomaga:
+Wersje 5.8.x przygotowywały głównie host. W 5.9 prepare obejmuje też to, co trzeba mieć w samym Windows guest, aby analiza naprawdę działała end-to-end.

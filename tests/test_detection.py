@@ -1,6 +1,6 @@
 from pathlib import Path
-from noriben58.models import SampleSession
-from noriben58.detection import analyze_text
+from noriben59.models import SampleSession
+from noriben59.detection import analyze_text
 
 def test_detection_basic(tmp_path):
     s = SampleSession(Path('sample.exe'), 'sample', tmp_path, tmp_path/'log.txt', tmp_path/'audit.jsonl')
