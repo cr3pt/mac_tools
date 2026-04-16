@@ -1,0 +1,15 @@
+version: "3.8"
+services:
+  postgres: 
+    image: postgres:15
+    environment:
+      POSTGRES_DB: noriben_soc
+      POSTGRES_USER: noriben
+      POSTGRES_PASSWORD: noriben
+  redis:
+    image: redis:7
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    depends_on: [postgres, redis]

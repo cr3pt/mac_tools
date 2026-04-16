@@ -1,0 +1,11 @@
+{
+  "dashboard": {
+    "title": "Noriben SOC Platform", 
+    "panels": [
+      {"title": "Sessions Severity", "type": "piechart", "targets": [{"expr": "noriben_sessions_total"}]},
+      {"title": "Jobs Queue", "type": "stat", "targets": [{"expr": "noriben_jobs_total"}]},
+      {"title": "Recent Logs", "type": "logs", "targets": [{"expr": "noriben_logs"}]}
+    ]
+  },
+  "overwrite": true
+}
