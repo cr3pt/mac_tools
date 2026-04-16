@@ -1,0 +1,142 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Noriben SOC Platform</title>
+  <meta charset="utf-8">
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <script src="https://unpkg.com/hyperscript.org@0.9.12"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+  <!-- Header -->
+  <nav class="bg-gray-800 p-4 shadow-lg">
+    <div class="flex justify-between items-center max-w-7xl mx-auto">
+      <h1 class="text-2xl font-bold">🚨 Noriben SOC</h1>
+      <div id="auth-section" class="space-x-2">
+        <button _="on click put 'Login' into #login-username then trigger login-form-show" 
+                class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">Login</button>
+      </div>
+      <div id="user-section" class="hidden space-x-2">
+        <span id="user-info" class="text-sm"></span>
+        <button id="logout-btn" _="on click post '/auth/logout' then remove #user-section add #auth-section then trigger clear-token" 
+                class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded">Logout</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Login Modal -->
+  <div id="login-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50" 
+       _="on htmx:afterRequest if response.status == 401 show #error-msg else hide #login-modal">
+    <div class="bg-gray-800 p-8 rounded-lg max-w-md w-full mx-4">
+      <h2 class="text-xl mb-4">Login</h2>
+      <form id="login-form" hx-post="/auth/login" hx-target="#login-response">
+        <input id="login-username" name="username" placeholder="tier1/tier2/admin" class="w-full p-2 bg-gray-700 rounded mb-2">
+        <input name="password" type="password" placeholder="tier1pass/tier2pass/adminpass" class="w-full p-2 bg-gray-700 rounded mb-4">
+        <button type="submit" class="w-full bg-green-600 hover:bg-green-700 p-2 rounded">Login</button>
+      </form>
+      <div id="login-response" class="mt-4"></div>
+      <div id="error-msg" class="text-red-400 mt-2 hidden">Invalid credentials</div>
+    </div>
+  </div>
+
+  <!-- Main Dashboard (requires auth) -->
+  <div id="main-content" class="max-w-7xl mx-auto p-6 hidden">
+
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div class="bg-gray-800 p-6 rounded-lg text-center">
+        <div id="sessions-count" class="text-3xl font-bold text-blue-400">0</div>
+        <div>Sessions</div>
+      </div>
+      <div class="bg-gray-800 p-6 rounded-lg text-center">
+        <div id="jobs-queued" class="text-3xl font-bold text-yellow-400">0</div>
+        <div>Jobs Queued</div>
+      </div>
+      <div class="bg-gray-800 p-6 rounded-lg text-center">
+        <div id="high-severity" class="text-3xl font-bold text-red-400">0</div>
+        <div>High Severity</div>
+      </div>
+    </div>
+
+    <!-- Upload Section -->
+    <div class="bg-gray-800 p-8 rounded-lg mb-8">
+      <h2 class="text-xl mb-4">📤 Upload Sample</h2>
+      <form id="upload-form" hx-post="/upload" hx-target="#upload-response" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".exe,.evtx,.ps1" class="w-full p-2 bg-gray-700 rounded mb-2" required>
+        <button type="submit" class="bg-purple-600 hover:bg-purple-700 px-6 py-2 rounded">Analyze</button>
+      </form>
+      <div id="upload-response" class="mt-4 p-4 bg-green-900 rounded hidden"></div>
+    </div>
+
+    <!-- Recent Jobs -->
+    <div class="bg-gray-800 p-6 rounded-lg mb-8">
+      <h2 class="text-xl mb-4">⏳ Recent Jobs</h2>
+      <div id="jobs-table" class="overflow-auto">
+        <table class="w-full">
+          <thead><tr class="border-b border-gray-700"><th class="p-2">Job ID</th><th>Status</th><th>Trace ID</th><th>Action</th></tr></thead>
+          <tbody id="jobs-body"></tbody>
+        </table>
+      </div>
+      <button hx-get="/jobs" hx-target="#jobs-table" 
+              hx-trigger="every 5s" 
+              class="mt-4 bg-blue-600 px-4 py-2 rounded">Refresh</button>
+    </div>
+
+    <!-- Sessions Table -->
+    <div class="bg-gray-800 p-6 rounded-lg">
+      <h2 class="text-xl mb-4">📋 Analysis Sessions</h2>
+      <div id="sessions-table" class="overflow-auto">
+        <table class="w-full">
+          <thead><tr class="border-b border-gray-700">
+            <th class="p-2">Session ID</th><th>Sample</th><th>Severity</th><th>Confidence</th><th>Status</th><th>Action</th>
+          </tr></thead>
+          <tbody id="sessions-body"></tbody>
+        </table>
+      </div>
+      <button hx-get="/sessions" hx-target="#sessions-table" 
+              hx-trigger="load, every 10s"
+              class="mt-4 bg-green-600 px-4 py-2 rounded">Refresh</button>
+    </div>
+  </div>
+
+  <script>
+    // Auth handling
+    document.body.addEventListener('htmx:configRequest', (e) => {
+      const token = localStorage.getItem('noriben_token');
+      if (token) {
+        e.detail.headers['Authorization'] = `Bearer ${token}`;
+      }
+    });
+
+    document.body.addEventListener('htmx:afterRequest', (e) => {
+      if (e.detail.xhr.status === 200 && e.detail.target.id === 'login-response') {
+        const data = JSON.parse(e.detail.xhr.response);
+        localStorage.setItem('noriben_token', data.token);
+        document.getElementById('user-info').textContent = `${data.username} (${data.role})`;
+        document.getElementById('auth-section').classList.add('hidden');
+        document.getElementById('user-section').classList.remove('hidden');
+        document.getElementById('main-content').classList.remove('hidden');
+        document.getElementById('login-modal').classList.add('hidden');
+      }
+    });
+
+    // Auto refresh on load
+    document.body.addEventListener('load', () => {
+      const token = localStorage.getItem('noriben_token');
+      if (token) {
+        document.getElementById('user-section').classList.remove('hidden');
+        document.getElementById('main-content').classList.remove('hidden');
+      }
+    });
+
+    function clearToken() {
+      localStorage.removeItem('noriben_token');
+      document.getElementById('main-content').classList.add('hidden');
+      document.getElementById('user-section').classList.add('hidden');
+      document.getElementById('auth-section').classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>
