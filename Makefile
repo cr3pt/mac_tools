@@ -1,14 +1,12 @@
-lint:
-	PYTHONPATH=. python3 -m py_compile noriben_soc/**/*.py
 
-test:
-	PYTHONPATH=. pytest -q
+sync-rules:
+	python3 addons/sync_sigmahq.py
 
 migrate:
-	alembic upgrade head
+	cd noriben_soc && alembic upgrade head
 
-run-api:
-	PYTHONPATH=. uvicorn noriben_soc.api.app:app --reload
+ui:
+	cp browser_ui/* noriben_soc/
 
-run-worker:
-	PYTHONPATH=. celery -A noriben_soc.core.tasks worker -Q analysis --loglevel=info
+dev:
+	make sync-rules migrate ui && docker-compose up

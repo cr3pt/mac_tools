@@ -1,5 +1,0 @@
-{
-  "T1059.001": {"name": "PowerShell", "tactic": "Execution"},
-  "T1003.001": {"name": "LSASS", "tactic": "Credential Access"},
-  "T1070.001": {"name": "Clear Logs", "tactic": "Defense Evasion"}
-}

@@ -1,14 +1,2 @@
-fastapi
-uvicorn
-python-multipart
-yara-python
-python-evtx
-pytest
-sqlalchemy
-bcrypt
-psycopg2-binary
-celery
-redis
-hvac
-pyyaml
-alembic
+
+fastapi uvicorn python-multipart yara-python sqlalchemy psycopg2-binary celery redis hvac pyyaml alembic
