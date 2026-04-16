@@ -4,9 +4,10 @@ from .config import load_config
 from .models import VMConfig, SampleSession, Finding
 from .detection import analyze_text
 from .reporting import export_session
-from .platform_qemu import detect_host, choose_accel, build_qemu_cmd
+from .platform_qemu import detect_host, choose_accel, build_qemu_cmd, recommend_profile
+from .prepare import prepare_environment
 
-VERSION = '5.7.0-cross-platform'
+VERSION = '5.8.0-prepare-cross-platform'
 
 class App:
     def __init__(self):
@@ -18,7 +19,7 @@ class App:
         self.root_dir.mkdir(parents=True, exist_ok=True)
 
     def parse_args(self):
-        p = argparse.ArgumentParser(description='Noriben QEMU Sandbox v5.7 cross-platform')
+        p = argparse.ArgumentParser(description='Noriben QEMU Sandbox v5.8 prepare cross-platform')
         p.add_argument('sample', nargs='?')
         p.add_argument('--config')
         p.add_argument('--profile')
@@ -29,10 +30,13 @@ class App:
         p.add_argument('--static-only', action='store_true')
         p.add_argument('--dynamic-only', action='store_true')
         p.add_argument('--show-host-info', action='store_true')
+        p.add_argument('--prepare', action='store_true')
         self.args = p.parse_args()
         self.cfg = load_config(self.args.config)
         if self.args.profile: self.cfg['analysis_profile'] = self.args.profile
         if self.args.dual_vm: self.cfg['dual_vm_mode'] = True
+        if self.cfg.get('platform_profile', 'auto') == 'auto':
+            self.cfg['platform_profile'] = recommend_profile(self.host_info)
 
     def preflight(self):
         for tool in ['python3','ssh','scp','qemu-img']:
@@ -87,7 +91,7 @@ class App:
 
     def prepare_vm(self, vm):
         self.ssh(vm, f"cmd /c \"mkdir {self.cfg['vm_malware_dir']} {self.cfg['vm_output_dir']} C:\\Tools 2>nul & exit 0\"")
-        noriben = Path.home() / 'NoribenTools' / 'Noriben.py'
+        noriben = Path(self.cfg['host_tools_dir']) / 'Noriben.py'
         if noriben.is_file(): self.scp_to(vm, noriben, self.cfg['vm_noriben'])
 
     def static_analysis(self, sample, session):
@@ -172,6 +176,10 @@ class App:
 
     def main(self):
         self.parse_args()
+        if self.args.prepare:
+            prep_file, plan = prepare_environment(self.cfg)
+            print(json.dumps({'prepare_file': str(prep_file), 'plan': plan}, indent=2, ensure_ascii=False))
+            return
         self.preflight()
         if self.args.preflight_only: return
         sessions = [self.process_sample(s) for s in self.queue()]

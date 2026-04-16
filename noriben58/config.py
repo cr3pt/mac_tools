@@ -11,6 +11,8 @@ DEFAULT_CONFIG = {
     'retry_delay': 3,
     'qemu_accel_mode': 'auto',
     'platform_profile': 'auto',
+    'host_tools_dir': str(Path.home() / 'NoribenTools'),
+    'host_results_dir': str(Path.home() / 'NoribenResults'),
     'qemu_disk': str(Path.home() / 'NoribenTools' / 'windows_arm_sandbox.qcow2'),
     'qemu_snapshot': 'Baseline_Clean',
     'qemu_mem': '16G',

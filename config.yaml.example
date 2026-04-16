@@ -7,6 +7,8 @@ retry_count: 3
 retry_delay: 3
 qemu_accel_mode: auto
 platform_profile: auto
+host_tools_dir: /root/NoribenTools
+host_results_dir: /root/NoribenResults
 qemu_disk: /root/NoribenTools/windows_arm_sandbox.qcow2
 qemu_snapshot: Baseline_Clean
 qemu_mem: 16G

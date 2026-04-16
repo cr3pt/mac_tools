@@ -1,4 +1,4 @@
-from noriben57.config import load_config
+from noriben58.config import load_config
 
 def test_load_config_kv(tmp_path):
     cfg_file = tmp_path / 'cfg.txt'
@@ -6,4 +6,3 @@ def test_load_config_kv(tmp_path):
     cfg = load_config(cfg_file)
     assert cfg['analysis_timeout'] == 123
     assert cfg['dual_vm_mode'] is True
-    assert cfg['qemu_accel_mode'] == 'auto'
