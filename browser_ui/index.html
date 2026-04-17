@@ -1,164 +1,151 @@
 <!DOCTYPE html>
 <html data-theme="dark"><head>
-<meta charset="utf-8"><title>Noriben SOC v6.4</title>
+<meta charset="utf-8"><title>Noriben SOC v6.5</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
-<style>*{font-family:Inter,sans-serif}.tab-a{background:rgba(99,102,241,.3);color:#a5b4fc}</style>
+<style>*{font-family:system-ui,sans-serif}.ta{background:rgba(99,102,241,.3);color:#a5b4fc}</style>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen">
 <div class="max-w-7xl mx-auto px-6 py-10 space-y-8">
 
-<!-- Header -->
-<header class="flex justify-between items-center p-6 bg-slate-900/80 backdrop-blur rounded-3xl border border-slate-800">
+<header class="flex justify-between items-center p-6 bg-slate-900 rounded-3xl border border-slate-800">
   <div class="flex items-center gap-4">
     <button onclick="var h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark'"
-            class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700">☀️</button>
-    <h1 class="text-3xl font-black bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Noriben SOC v6.4</h1>
+            class="p-2 rounded-xl bg-slate-800 text-xl">☀️</button>
+    <h1 class="text-3xl font-black bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+      Noriben SOC v6.5</h1>
   </div>
   <div id="ws-st" class="px-4 py-2 rounded-xl bg-rose-500/20 text-rose-300 text-sm font-semibold">⚫ Offline</div>
 </header>
 
-<!-- Metrics -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
   <div class="p-6 bg-slate-900 rounded-2xl border border-slate-800 text-center">
-    <div class="text-4xl font-black text-blue-400" id="m-tot">0</div><div class="text-slate-400 text-sm mt-1">Sesje</div></div>
+    <div class="text-4xl font-black text-blue-400" id="mt">0</div>
+    <div class="text-slate-400 text-sm mt-1">Sesje</div></div>
   <div class="p-6 bg-slate-900 rounded-2xl border border-emerald-800/40 text-center">
-    <div class="text-4xl font-black text-emerald-400" id="m-cl">0</div><div class="text-slate-400 text-sm mt-1">Clean</div></div>
+    <div class="text-4xl font-black text-emerald-400" id="mc">0</div>
+    <div class="text-slate-400 text-sm mt-1">Clean</div></div>
   <div class="p-6 bg-slate-900 rounded-2xl border border-orange-800/40 text-center">
-    <div class="text-4xl font-black text-orange-400" id="m-su">0</div><div class="text-slate-400 text-sm mt-1">Suspicious</div></div>
+    <div class="text-4xl font-black text-orange-400" id="ms">0</div>
+    <div class="text-slate-400 text-sm mt-1">Suspicious</div></div>
   <div class="p-6 bg-slate-900 rounded-2xl border border-rose-800/40 text-center">
-    <div class="text-4xl font-black text-rose-400" id="m-ma">0</div><div class="text-slate-400 text-sm mt-1">Malware</div></div>
+    <div class="text-4xl font-black text-rose-400" id="mm">0</div>
+    <div class="text-slate-400 text-sm mt-1">Malware</div></div>
 </div>
 
-<!-- Upload -->
-<div class="border-4 border-dashed border-slate-700 hover:border-blue-500 rounded-3xl p-20 text-center cursor-pointer transition-all"
-     ondragover="event.preventDefault()" ondrop="handleDrop(event)" onclick="document.getElementById('fi').click()">
-  <div class="text-6xl mb-6">☁️</div>
-  <h2 class="text-3xl font-black mb-3">Drop Malware Sample</h2>
-  <p class="text-slate-400 text-lg">.exe .dll .evtx .ps1 .scr — Static + Dynamic</p>
-  <input id="fi" type="file" multiple class="hidden" onchange="uploadFiles(this.files)">
+<div class="border-4 border-dashed border-slate-700 hover:border-blue-500 rounded-3xl p-16 text-center cursor-pointer transition-all"
+     ondragover="event.preventDefault()" ondrop="hDrop(event)" onclick="document.getElementById('fi').click()">
+  <div class="text-5xl mb-4">☁️</div>
+  <h2 class="text-2xl font-black mb-2">Drop Malware Sample</h2>
+  <p class="text-slate-400">.exe .dll .evtx .ps1 .scr</p>
+  <input id="fi" type="file" multiple class="hidden" onchange="upload(this.files)">
 </div>
 <div id="pb" class="hidden h-2 bg-slate-800 rounded-full overflow-hidden">
   <div id="pf" class="h-2 bg-gradient-to-r from-blue-500 to-purple-600 transition-all" style="width:0%"></div>
 </div>
 
-<!-- Results -->
 <div id="res" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-8">
-
-  <!-- Left: analysis card -->
   <div class="bg-slate-900 p-8 rounded-3xl border border-slate-800 space-y-6">
-    <div class="flex justify-between items-center">
-      <h2 class="text-2xl font-black">🔬 Wyniki</h2>
-      <span id="dyn-b" class="hidden px-3 py-1 bg-purple-600/30 text-purple-300 rounded-xl text-sm font-mono">Dynamic ✓</span>
+    <div class="flex justify-between">
+      <h2 class="text-xl font-black">🔬 Wyniki</h2>
+      <span id="db" class="hidden px-3 py-1 bg-purple-600/30 text-purple-300 rounded-xl text-sm">Dynamic ✓</span>
     </div>
-    <!-- Tabs -->
     <div class="flex bg-slate-800/50 rounded-xl p-1">
-      <button class="tab-btn flex-1 py-3 rounded-xl font-semibold tab-a" data-t="static">Static</button>
-      <button class="tab-btn flex-1 py-3 rounded-xl font-semibold" data-t="dynamic">Dynamic</button>
+      <button class="tb flex-1 py-3 rounded-xl font-semibold ta" data-t="s">Static</button>
+      <button class="tb flex-1 py-3 rounded-xl font-semibold" data-t="d">Dynamic</button>
     </div>
-    <!-- Static -->
-    <div id="t-st" class="grid grid-cols-3 gap-4">
-      <div class="p-5 bg-blue-500/10 rounded-2xl border border-blue-500/30 text-center">
-        <div class="text-3xl font-black text-blue-400" id="sy">0</div><div class="text-blue-300 text-sm mt-1">YARA</div></div>
-      <div class="p-5 bg-emerald-500/10 rounded-2xl border border-emerald-500/30 text-center">
-        <div class="text-3xl font-black text-emerald-400" id="ss">0</div><div class="text-emerald-300 text-sm mt-1">SIGMA</div></div>
-      <div class="p-5 bg-orange-500/10 rounded-2xl border border-orange-500/30 text-center">
-        <div class="text-3xl font-black text-orange-400" id="se">0</div><div class="text-orange-300 text-sm mt-1">EVTX</div></div>
+    <div id="ts" class="grid grid-cols-3 gap-4">
+      <div class="p-4 bg-blue-500/10 rounded-2xl border border-blue-500/30 text-center">
+        <div class="text-3xl font-black text-blue-400" id="sy">0</div>
+        <div class="text-blue-300 text-sm mt-1">YARA</div></div>
+      <div class="p-4 bg-emerald-500/10 rounded-2xl border border-emerald-500/30 text-center">
+        <div class="text-3xl font-black text-emerald-400" id="ss">0</div>
+        <div class="text-emerald-300 text-sm mt-1">SIGMA</div></div>
+      <div class="p-4 bg-orange-500/10 rounded-2xl border border-orange-500/30 text-center">
+        <div class="text-3xl font-black text-orange-400" id="se">0</div>
+        <div class="text-orange-300 text-sm mt-1">EVTX</div></div>
     </div>
-    <!-- Dynamic -->
-    <div id="t-dy" class="hidden grid grid-cols-2 gap-4">
-      <div class="p-5 bg-purple-500/10 rounded-2xl border border-purple-500/30 text-center">
-        <div class="text-3xl font-black text-purple-400" id="dn">0</div><div class="text-purple-300 text-sm mt-1">Network</div></div>
-      <div class="p-5 bg-rose-500/10 rounded-2xl border border-rose-500/30 text-center">
-        <div class="text-3xl font-black text-rose-400" id="df">0</div><div class="text-rose-300 text-sm mt-1">Files</div></div>
-      <div class="p-5 bg-indigo-500/10 rounded-2xl border border-indigo-500/30 text-center">
-        <div class="text-3xl font-black text-indigo-400" id="dp">0</div><div class="text-indigo-300 text-sm mt-1">Processes</div></div>
-      <div class="p-5 bg-yellow-500/10 rounded-2xl border border-yellow-500/30 text-center">
-        <div class="text-3xl font-black text-yellow-400" id="dr">0</div><div class="text-yellow-300 text-sm mt-1">Registry</div></div>
+    <div id="td" class="hidden grid grid-cols-2 gap-4">
+      <div class="p-4 bg-purple-500/10 rounded-2xl border border-purple-500/30 text-center">
+        <div class="text-3xl font-black text-purple-400" id="dn">0</div>
+        <div class="text-purple-300 text-sm mt-1">Network</div></div>
+      <div class="p-4 bg-rose-500/10 rounded-2xl border border-rose-500/30 text-center">
+        <div class="text-3xl font-black text-rose-400" id="df">0</div>
+        <div class="text-rose-300 text-sm mt-1">Files</div></div>
+      <div class="p-4 bg-indigo-500/10 rounded-2xl border border-indigo-500/30 text-center">
+        <div class="text-3xl font-black text-indigo-400" id="dp">0</div>
+        <div class="text-indigo-300 text-sm mt-1">Processes</div></div>
+      <div class="p-4 bg-yellow-500/10 rounded-2xl border border-yellow-500/30 text-center">
+        <div class="text-3xl font-black text-yellow-400" id="dr">0</div>
+        <div class="text-yellow-300 text-sm mt-1">Registry</div></div>
     </div>
-    <!-- Table -->
-    <div class="overflow-x-auto">
-      <table class="w-full bg-slate-800/50 rounded-xl text-sm">
-        <thead><tr class="text-slate-400 text-left">
-          <th class="p-3">Reguła</th><th class="p-3">Typ</th><th class="p-3">Severity</th>
-        </tr></thead>
-        <tbody id="rt"></tbody>
-      </table>
-    </div>
+    <table class="w-full text-sm bg-slate-800/50 rounded-xl">
+      <thead><tr class="text-slate-400 text-left">
+        <th class="p-3">Reguła</th><th class="p-3">Typ</th><th class="p-3">Severity</th>
+      </tr></thead>
+      <tbody id="rt"></tbody>
+    </table>
   </div>
 
-  <!-- Right: MITRE + VNC -->
   <div class="space-y-6">
-    <div class="bg-slate-900 p-8 rounded-3xl border border-slate-800">
-      <h3 class="text-xl font-black mb-6 text-orange-400">🎯 MITRE ATT&CK</h3>
-      <div id="mi" class="space-y-3"></div>
+    <div class="bg-slate-900 p-6 rounded-3xl border border-slate-800">
+      <h3 class="text-lg font-black mb-4 text-orange-400">🎯 MITRE ATT&CK</h3>
+      <div id="mi" class="space-y-2"></div>
     </div>
-    <div class="bg-slate-900 p-8 rounded-3xl border border-slate-800 text-center space-y-4">
-      <h4 class="font-bold text-lg">🖥️ QEMU Win10 — Live</h4>
-      <div class="bg-slate-800 p-4 rounded-xl">
-        <strong>VNC: localhost:5901</strong><br>
-        <small class="text-slate-500">hasło: noriben</small>
-      </div>
+    <div class="bg-slate-900 p-6 rounded-3xl border border-slate-800 text-center space-y-3">
+      <h4 class="font-bold">🖥️ QEMU Win10 Live</h4>
+      <div class="bg-slate-800 p-3 rounded-xl text-sm">
+        <strong>VNC: localhost:5901</strong> | hasło: noriben</div>
       <button onclick="window.open('vnc://localhost:5901')"
-        class="w-full bg-gradient-to-r from-purple-600 to-violet-600 hover:opacity-90 py-4 rounded-2xl font-bold">
-        🔴 Open VNC Live
-      </button>
+        class="w-full bg-gradient-to-r from-purple-600 to-violet-600 py-3 rounded-2xl font-bold hover:opacity-90">
+        🔴 Open VNC Live</button>
       <a href="http://localhost:3000" target="_blank"
-        class="block w-full bg-gradient-to-r from-orange-600 to-yellow-600 hover:opacity-90 py-4 rounded-2xl font-bold">
-        📊 Grafana Dashboard
-      </a>
+        class="block w-full bg-gradient-to-r from-orange-600 to-yellow-600 py-3 rounded-2xl font-bold hover:opacity-90">
+        📊 Grafana Dashboard</a>
     </div>
   </div>
 </div>
 </div>
-
 <script>
-// WS
-let ws;
 function connectWS(){
-  ws=new WebSocket('ws://'+location.host+'/ws');
-  ws.onopen=()=>{var el=document.getElementById('ws-st');el.textContent='🟢 Live';el.className='px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-300 text-sm font-semibold';};
-  ws.onclose=()=>{document.getElementById('ws-st').textContent='⚫ Offline';setTimeout(connectWS,3000);};
-  ws.onmessage=(e)=>{const d=JSON.parse(e.data);
-    document.getElementById('m-tot').textContent=d.length;
-    document.getElementById('m-cl').textContent=d.filter(s=>s.severity<30).length;
-    document.getElementById('m-su').textContent=d.filter(s=>s.severity>=30&&s.severity<70).length;
-    document.getElementById('m-ma').textContent=d.filter(s=>s.severity>=70).length;};
+  const w=new WebSocket('ws://'+location.host+'/ws');
+  w.onopen=()=>{const e=document.getElementById('ws-st');e.textContent='🟢 Live';e.className='px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-300 text-sm font-semibold';};
+  w.onclose=()=>setTimeout(connectWS,3000);
+  w.onmessage=(e)=>{const d=JSON.parse(e.data);
+    document.getElementById('mt').textContent=d.length;
+    document.getElementById('mc').textContent=d.filter(s=>s.severity<30).length;
+    document.getElementById('ms').textContent=d.filter(s=>s.severity>=30&&s.severity<70).length;
+    document.getElementById('mm').textContent=d.filter(s=>s.severity>=70).length;};
 }
 connectWS();
-
-// Tabs
-document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>{
-  document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('tab-a'));
-  b.classList.add('tab-a');
-  document.getElementById('t-st').classList.toggle('hidden',b.dataset.t!=='static');
-  document.getElementById('t-dy').classList.toggle('hidden',b.dataset.t!=='dynamic');
+document.querySelectorAll('.tb').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.tb').forEach(x=>x.classList.remove('ta'));
+  b.classList.add('ta');
+  document.getElementById('ts').classList.toggle('hidden',b.dataset.t!=='s');
+  document.getElementById('td').classList.toggle('hidden',b.dataset.t!=='d');
 }));
-
-// Upload
-async function uploadFiles(files){
+async function upload(files){
   document.getElementById('pb').classList.remove('hidden');
   for(let i=0;i<files.length;i++){
     const fd=new FormData();fd.append('file',files[i]);
     const r=await fetch('/upload',{method:'POST',body:fd});
     const d=await r.json();
     document.getElementById('pf').style.width=((i+1)/files.length*100)+'%';
-    pollJob(d.job_id);
+    poll(d.job_id);
   }
 }
-async function pollJob(id){
+async function poll(id){
   const iv=setInterval(async()=>{
     const r=await fetch('/job/'+id);const d=await r.json();
-    if(d.status==='SUCCESS'){clearInterval(iv);showResults(d.result);}
+    if(d.status==='SUCCESS'){clearInterval(iv);show(d.result);}
   },2000);
 }
-function showResults(data){
+function show(data){
   document.getElementById('res').classList.remove('hidden');
   document.getElementById('sy').textContent=data.static?.yara?.length||0;
   document.getElementById('ss').textContent=data.static?.sigma?.length||0;
   document.getElementById('se').textContent=data.static?.evtx?.length||0;
   if(data.dynamic){
-    document.getElementById('dyn-b').classList.remove('hidden');
+    document.getElementById('db').classList.remove('hidden');
     document.getElementById('dn').textContent=data.dynamic.network?.length||0;
     document.getElementById('df').textContent=data.dynamic.files_dropped?.length||0;
     document.getElementById('dp').textContent=data.dynamic.processes?.length||0;
@@ -167,20 +154,21 @@ function showResults(data){
   const hits=[...(data.static?.yara||[]),...(data.static?.sigma||[])];
   document.getElementById('rt').innerHTML=hits.map(h=>
     `<tr class="border-t border-slate-700">
-       <td class="p-3 font-mono text-xs">${h.rule}</td>
-       <td class="p-3 text-center text-slate-400">${h.type||'YARA'}</td>
-       <td class="p-3 text-center"><span class="px-2 py-0.5 rounded text-xs ${h.severity==='HIGH'?'bg-rose-500/30 text-rose-300':'bg-yellow-500/30 text-yellow-300'}">${h.severity}</span></td>
+       <td class="p-2 font-mono text-xs">${h.rule}</td>
+       <td class="p-2 text-center text-slate-400 text-xs">${h.type}</td>
+       <td class="p-2 text-center"><span class="px-2 py-0.5 rounded text-xs ${h.severity==='HIGH'?'bg-rose-500/30 text-rose-300':'bg-yellow-500/30 text-yellow-300'}">${h.severity}</span></td>
      </tr>`).join('');
   document.getElementById('mi').innerHTML=(data.mitre||[]).map(t=>
-    `<div class="flex items-center gap-3 p-3 bg-orange-500/10 rounded-xl">
-       <div class="w-3 h-3 bg-orange-500 rounded-full"></div>
-       <span class="font-mono text-sm text-orange-300">${t}</span>
+    `<div class="flex items-center gap-2 p-2 bg-orange-500/10 rounded-xl">
+       <div class="w-2 h-2 bg-orange-500 rounded-full"></div>
+       <span class="font-mono text-xs text-orange-300">${t}</span>
      </div>`).join('');
 }
-function handleDrop(e){e.preventDefault();uploadFiles(e.dataTransfer.files);}
+function hDrop(e){e.preventDefault();upload(e.dataTransfer.files);}
 document.addEventListener('keydown',e=>{
   if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();
-    const q=prompt('Szukaj SHA256/filename:');
-    if(q)fetch('/sessions/'+q).then(r=>r.json()).then(showResults);}
+    const q=prompt('SHA256 / filename:');
+    if(q)fetch('/sessions/'+q).then(r=>r.json()).then(show);
+  }
 });
 </script></body></html>

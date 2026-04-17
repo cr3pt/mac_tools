@@ -1,11 +1,7 @@
-.PHONY: deploy dev migrate test clean
+.PHONY: deploy test clean
 deploy:
 	./deploy.sh
-dev:
-	uvicorn noriben_soc.api.main:app --reload --host 0.0.0.0
-migrate:
-	alembic upgrade head
 test:
-	pytest tests/ -v
+	docker-compose exec api pytest
 clean:
 	docker-compose down -v && docker volume prune -f

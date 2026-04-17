@@ -1,5 +1,5 @@
 __pycache__/
 *.pyc
 .env
-vms/win10.qcow2
 *.pml
+vms/win10.qcow2

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Noriben SOC v6.4 — QEMU Win10 Sandbox Launcher
+# Noriben SOC v6.5 — QEMU Win10 Sandbox Launcher
 SAMPLE=$1
 TIMEOUT=${2:-300}
 SHARED=/shared
@@ -17,16 +17,13 @@ qemu-system-x86_64 \
   -daemonize
 
 sleep 15
-echo "[*] VM booted — injecting $SAMPLE..."
+echo "[*] VM booted — injecting sample..."
 
-cat > $SHARED/run.bat <<BAT
+cat > $SHARED/run.bat << BAT
 @echo off
 cd C:\noriben
-python noriben.py -t $TIMEOUT ^
-  --output C:\shared\results\${STEM}.pml ^
-  --cmd C:\shared\samples\$(basename $SAMPLE)
+python noriben.py -t $TIMEOUT --output C:\shared\results\${STEM}.pml --cmd C:\shared\samples\$(basename $SAMPLE)
 BAT
 
-echo "[*] Noriben running, waiting ${TIMEOUT}s..."
 sleep $TIMEOUT
 echo "[*] Done: $SHARED/results/${STEM}.pml"
