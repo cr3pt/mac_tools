@@ -1,9 +1,1 @@
-{
-  "title": "Noriben SOC v6.6",
-  "panels": [
-    {"title": "Sessions per hour", "type": "graph"},
-    {"title": "Severity breakdown","type": "piechart"},
-    {"title": "MITRE heatmap",     "type": "heatmap"},
-    {"title": "Top YARA rules",    "type": "bargauge"}
-  ]
-}
+{"title":"Noriben SOC v6.6","panels":[{"title":"Sessions/hour","type":"graph"},{"title":"Severity breakdown","type":"piechart"},{"title":"MITRE heatmap","type":"heatmap"},{"title":"Top YARA rules","type":"bargauge"}]}

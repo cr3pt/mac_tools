@@ -3,37 +3,24 @@
 <meta charset="utf-8"><title>Noriben SOC v6.6</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>*{font-family:system-ui,sans-serif}.ta{background:rgba(99,102,241,.3);color:#a5b4fc}</style>
-</head>
-<body class="bg-slate-950 text-slate-100 min-h-screen">
+</head><body class="bg-slate-950 text-slate-100 min-h-screen">
 <div class="max-w-7xl mx-auto px-6 py-10 space-y-8">
-
 <header class="flex justify-between items-center p-6 bg-slate-900 rounded-3xl border border-slate-800">
   <div class="flex items-center gap-4">
-    <button onclick="var h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark'"
-            class="p-2 rounded-xl bg-slate-800 text-xl">☀️</button>
+    <button onclick="var h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark'" class="p-2 rounded-xl bg-slate-800 text-xl">☀️</button>
     <div>
       <h1 class="text-3xl font-black bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Noriben SOC v6.6</h1>
-      <div class="text-xs text-slate-500 mt-1">Env: <span id="env-label" class="text-blue-400 font-mono">detecting...</span></div>
+      <div class="text-xs text-slate-500 mt-1">Env: <span id="env-lbl" class="text-blue-400 font-mono">detecting...</span></div>
     </div>
   </div>
   <div id="ws-st" class="px-4 py-2 rounded-xl bg-rose-500/20 text-rose-300 text-sm font-semibold">⚫ Offline</div>
 </header>
-
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
-  <div class="p-6 bg-slate-900 rounded-2xl border border-slate-800 text-center">
-    <div class="text-4xl font-black text-blue-400" id="mt">0</div>
-    <div class="text-slate-400 text-sm mt-1">Sesje</div></div>
-  <div class="p-6 bg-slate-900 rounded-2xl border border-emerald-800/40 text-center">
-    <div class="text-4xl font-black text-emerald-400" id="mc">0</div>
-    <div class="text-slate-400 text-sm mt-1">Clean</div></div>
-  <div class="p-6 bg-slate-900 rounded-2xl border border-orange-800/40 text-center">
-    <div class="text-4xl font-black text-orange-400" id="ms">0</div>
-    <div class="text-slate-400 text-sm mt-1">Suspicious</div></div>
-  <div class="p-6 bg-slate-900 rounded-2xl border border-rose-800/40 text-center">
-    <div class="text-4xl font-black text-rose-400" id="mm">0</div>
-    <div class="text-slate-400 text-sm mt-1">Malware</div></div>
+  <div class="p-6 bg-slate-900 rounded-2xl border border-slate-800 text-center"><div class="text-4xl font-black text-blue-400" id="mt">0</div><div class="text-slate-400 text-sm mt-1">Sesje</div></div>
+  <div class="p-6 bg-slate-900 rounded-2xl border border-emerald-800/40 text-center"><div class="text-4xl font-black text-emerald-400" id="mc">0</div><div class="text-slate-400 text-sm mt-1">Clean</div></div>
+  <div class="p-6 bg-slate-900 rounded-2xl border border-orange-800/40 text-center"><div class="text-4xl font-black text-orange-400" id="ms">0</div><div class="text-slate-400 text-sm mt-1">Suspicious</div></div>
+  <div class="p-6 bg-slate-900 rounded-2xl border border-rose-800/40 text-center"><div class="text-4xl font-black text-rose-400" id="mm">0</div><div class="text-slate-400 text-sm mt-1">Malware</div></div>
 </div>
-
 <div class="border-4 border-dashed border-slate-700 hover:border-blue-500 rounded-3xl p-16 text-center cursor-pointer transition-all"
      ondragover="event.preventDefault()" ondrop="hDrop(event)" onclick="document.getElementById('fi').click()">
   <div class="text-5xl mb-4">☁️</div>
@@ -44,7 +31,6 @@
 <div id="pb" class="hidden h-2 bg-slate-800 rounded-full overflow-hidden">
   <div id="pf" class="h-2 bg-gradient-to-r from-blue-500 to-purple-600 transition-all" style="width:0%"></div>
 </div>
-
 <div id="res" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-8">
   <div class="bg-slate-900 p-8 rounded-3xl border border-slate-800 space-y-6">
     <div class="flex justify-between">
@@ -56,34 +42,18 @@
       <button class="tb flex-1 py-3 rounded-xl font-semibold" data-t="d">Dynamic</button>
     </div>
     <div id="ts" class="grid grid-cols-3 gap-4">
-      <div class="p-4 bg-blue-500/10 rounded-2xl border border-blue-500/30 text-center">
-        <div class="text-3xl font-black text-blue-400" id="sy">0</div>
-        <div class="text-blue-300 text-sm mt-1">YARA</div></div>
-      <div class="p-4 bg-emerald-500/10 rounded-2xl border border-emerald-500/30 text-center">
-        <div class="text-3xl font-black text-emerald-400" id="ss">0</div>
-        <div class="text-emerald-300 text-sm mt-1">SIGMA</div></div>
-      <div class="p-4 bg-orange-500/10 rounded-2xl border border-orange-500/30 text-center">
-        <div class="text-3xl font-black text-orange-400" id="se">0</div>
-        <div class="text-orange-300 text-sm mt-1">EVTX</div></div>
+      <div class="p-4 bg-blue-500/10 rounded-2xl border border-blue-500/30 text-center"><div class="text-3xl font-black text-blue-400" id="sy">0</div><div class="text-blue-300 text-sm mt-1">YARA</div></div>
+      <div class="p-4 bg-emerald-500/10 rounded-2xl border border-emerald-500/30 text-center"><div class="text-3xl font-black text-emerald-400" id="ss">0</div><div class="text-emerald-300 text-sm mt-1">SIGMA</div></div>
+      <div class="p-4 bg-orange-500/10 rounded-2xl border border-orange-500/30 text-center"><div class="text-3xl font-black text-orange-400" id="se">0</div><div class="text-orange-300 text-sm mt-1">EVTX</div></div>
     </div>
     <div id="td" class="hidden grid grid-cols-2 gap-4">
-      <div class="p-4 bg-purple-500/10 rounded-2xl border border-purple-500/30 text-center">
-        <div class="text-3xl font-black text-purple-400" id="dn">0</div>
-        <div class="text-purple-300 text-sm mt-1">Network IOCs</div></div>
-      <div class="p-4 bg-rose-500/10 rounded-2xl border border-rose-500/30 text-center">
-        <div class="text-3xl font-black text-rose-400" id="df">0</div>
-        <div class="text-rose-300 text-sm mt-1">Files Dropped</div></div>
-      <div class="p-4 bg-indigo-500/10 rounded-2xl border border-indigo-500/30 text-center">
-        <div class="text-3xl font-black text-indigo-400" id="dp">0</div>
-        <div class="text-indigo-300 text-sm mt-1">Processes</div></div>
-      <div class="p-4 bg-yellow-500/10 rounded-2xl border border-yellow-500/30 text-center">
-        <div class="text-3xl font-black text-yellow-400" id="dr">0</div>
-        <div class="text-yellow-300 text-sm mt-1">Registry</div></div>
+      <div class="p-4 bg-purple-500/10 rounded-2xl border border-purple-500/30 text-center"><div class="text-3xl font-black text-purple-400" id="dn">0</div><div class="text-purple-300 text-sm mt-1">Network IOCs</div></div>
+      <div class="p-4 bg-rose-500/10 rounded-2xl border border-rose-500/30 text-center"><div class="text-3xl font-black text-rose-400" id="df">0</div><div class="text-rose-300 text-sm mt-1">Files Dropped</div></div>
+      <div class="p-4 bg-indigo-500/10 rounded-2xl border border-indigo-500/30 text-center"><div class="text-3xl font-black text-indigo-400" id="dp">0</div><div class="text-indigo-300 text-sm mt-1">Processes</div></div>
+      <div class="p-4 bg-yellow-500/10 rounded-2xl border border-yellow-500/30 text-center"><div class="text-3xl font-black text-yellow-400" id="dr">0</div><div class="text-yellow-300 text-sm mt-1">Registry</div></div>
     </div>
     <table class="w-full text-sm bg-slate-800/50 rounded-xl">
-      <thead><tr class="text-slate-400 text-left">
-        <th class="p-3">Reguła</th><th class="p-3">Typ</th><th class="p-3">Severity</th>
-      </tr></thead>
+      <thead><tr class="text-slate-400 text-left"><th class="p-3">Regula</th><th class="p-3">Typ</th><th class="p-3">Severity</th></tr></thead>
       <tbody id="rt"></tbody>
     </table>
   </div>
@@ -95,15 +65,11 @@
     <div class="bg-slate-900 p-6 rounded-3xl border border-slate-800 text-center space-y-3">
       <h4 class="font-bold">🖥️ QEMU Win10 — Live Sandbox</h4>
       <div class="bg-slate-800 p-3 rounded-xl text-sm">
-        <strong>VNC: localhost:5901</strong> | hasło: noriben<br>
+        <strong>VNC: localhost:5901</strong> | haslo: noriben<br>
         <small class="text-slate-500">Izolowana VM — bezpieczna analiza malware</small>
       </div>
-      <button onclick="window.open('vnc://localhost:5901')"
-        class="w-full bg-gradient-to-r from-purple-600 to-violet-600 py-3 rounded-2xl font-bold hover:opacity-90">
-        🔴 Open VNC Live</button>
-      <a href="http://localhost:3000" target="_blank"
-        class="block w-full bg-gradient-to-r from-orange-600 to-yellow-600 py-3 rounded-2xl font-bold hover:opacity-90">
-        📊 Grafana Dashboard</a>
+      <button onclick="window.open('vnc://localhost:5901')" class="w-full bg-gradient-to-r from-purple-600 to-violet-600 py-3 rounded-2xl font-bold hover:opacity-90">🔴 Open VNC Live</button>
+      <a href="http://localhost:3000" target="_blank" class="block w-full bg-gradient-to-r from-orange-600 to-yellow-600 py-3 rounded-2xl font-bold hover:opacity-90">📊 Grafana Dashboard</a>
     </div>
   </div>
 </div>
@@ -120,12 +86,9 @@ function connectWS(){
     document.getElementById('mm').textContent=d.filter(s=>s.severity>=70).length;};
 }
 connectWS();
-fetch('/health').then(r=>r.json()).then(d=>{
-  document.getElementById('env-label').textContent=d.env||'unknown';
-});
+fetch('/health').then(r=>r.json()).then(d=>document.getElementById('env-lbl').textContent=d.env||'unknown');
 document.querySelectorAll('.tb').forEach(b=>b.addEventListener('click',()=>{
-  document.querySelectorAll('.tb').forEach(x=>x.classList.remove('ta'));
-  b.classList.add('ta');
+  document.querySelectorAll('.tb').forEach(x=>x.classList.remove('ta'));b.classList.add('ta');
   document.getElementById('ts').classList.toggle('hidden',b.dataset.t!=='s');
   document.getElementById('td').classList.toggle('hidden',b.dataset.t!=='d');
 }));
@@ -150,31 +113,17 @@ function show(data){
   document.getElementById('sy').textContent=data.static?.yara?.length||0;
   document.getElementById('ss').textContent=data.static?.sigma?.length||0;
   document.getElementById('se').textContent=data.static?.evtx?.length||0;
-  if(data.dynamic){
-    document.getElementById('db').classList.remove('hidden');
+  if(data.dynamic){document.getElementById('db').classList.remove('hidden');
     document.getElementById('dn').textContent=data.dynamic.network?.length||0;
     document.getElementById('df').textContent=data.dynamic.files_dropped?.length||0;
     document.getElementById('dp').textContent=data.dynamic.processes?.length||0;
-    document.getElementById('dr').textContent=data.dynamic.registry?.length||0;
-  }
+    document.getElementById('dr').textContent=data.dynamic.registry?.length||0;}
   const hits=[...(data.static?.yara||[]),...(data.static?.sigma||[])];
   document.getElementById('rt').innerHTML=hits.map(h=>
-    `<tr class="border-t border-slate-700">
-       <td class="p-2 font-mono text-xs">${h.rule}</td>
-       <td class="p-2 text-center text-slate-400 text-xs">${h.type}</td>
-       <td class="p-2 text-center"><span class="px-2 py-0.5 rounded text-xs ${h.severity==='HIGH'?'bg-rose-500/30 text-rose-300':'bg-yellow-500/30 text-yellow-300'}">${h.severity}</span></td>
-     </tr>`).join('');
+    `<tr class="border-t border-slate-700"><td class="p-2 font-mono text-xs">${h.rule}</td><td class="p-2 text-center text-slate-400 text-xs">${h.type}</td><td class="p-2 text-center"><span class="px-2 py-0.5 rounded text-xs ${h.severity==='HIGH'?'bg-rose-500/30 text-rose-300':'bg-yellow-500/30 text-yellow-300'}">${h.severity}</span></td></tr>`).join('');
   document.getElementById('mi').innerHTML=(data.mitre||[]).map(t=>
-    `<div class="flex items-center gap-2 p-2 bg-orange-500/10 rounded-xl">
-       <div class="w-2 h-2 bg-orange-500 rounded-full"></div>
-       <span class="font-mono text-xs text-orange-300">${t}</span>
-     </div>`).join('');
+    `<div class="flex items-center gap-2 p-2 bg-orange-500/10 rounded-xl"><div class="w-2 h-2 bg-orange-500 rounded-full"></div><span class="font-mono text-xs text-orange-300">${t}</span></div>`).join('');
 }
 function hDrop(e){e.preventDefault();upload(e.dataTransfer.files);}
-document.addEventListener('keydown',e=>{
-  if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();
-    const q=prompt('SHA256 / filename:');
-    if(q)fetch('/sessions/'+q).then(r=>r.json()).then(show);
-  }
-});
+document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();const q=prompt('SHA256 / filename:');if(q)fetch('/sessions/'+q).then(r=>r.json()).then(show);}});
 </script></body></html>

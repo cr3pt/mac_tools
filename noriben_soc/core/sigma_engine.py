@@ -1,7 +1,7 @@
 KEYWORDS = {
-    'HIGH':   ['lsass','mimikatz','sekurlsa','invoke-mimikatz','wce'],
+    'HIGH':   ['lsass','mimikatz','sekurlsa','invoke-mimikatz'],
     'MEDIUM': ['powershell -enc','certutil -decode','wscript','mshta','regsvr32'],
-    'LOW':    ['cmd.exe','wevtutil','net user','net localgroup'],
+    'LOW':    ['cmd.exe','wevtutil','net user'],
 }
 def run_sigma_scan(text: str) -> list:
     t = text.lower()

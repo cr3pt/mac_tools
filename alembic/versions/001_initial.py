@@ -1,8 +1,6 @@
 from alembic import op
 import sqlalchemy as sa
-revision = '001'
-down_revision = None
-
+revision = '001'; down_revision = None
 def upgrade():
     op.create_table('analysis_sessions',
         sa.Column('id',          sa.Integer,    primary_key=True),
@@ -11,6 +9,5 @@ def upgrade():
         sa.Column('severity',    sa.Integer,    default=0),
         sa.Column('result_json', sa.Text),
         sa.Column('created_at',  sa.DateTime))
-
 def downgrade():
     op.drop_table('analysis_sessions')
