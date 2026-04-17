@@ -1,7 +1,7 @@
 .PHONY: deploy test clean
 deploy:
-	./deploy.sh
+	bash deploy.sh
 test:
-	docker-compose exec api pytest
+	docker-compose exec api pytest tests/ -v
 clean:
 	docker-compose down -v && docker volume prune -f

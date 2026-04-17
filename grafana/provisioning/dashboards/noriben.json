@@ -1,5 +1,5 @@
 {
-  "title": "Noriben SOC v6.5",
+  "title": "Noriben SOC v6.6",
   "panels": [
     {"title": "Sessions per hour", "type": "graph"},
     {"title": "Severity breakdown","type": "piechart"},

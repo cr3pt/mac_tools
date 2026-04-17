@@ -3,11 +3,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import asyncio, json, tempfile, os
 from pathlib import Path
-from ..core.pipeline import analyze_sample
 from ..tasks import run_analysis_task
 import asyncpg
 
-app = FastAPI(title='Noriben SOC v6.5')
+app = FastAPI(title='Noriben SOC v6.6')
 app.mount('/static', StaticFiles(directory='browser_ui'), name='static')
 
 @app.get('/')
@@ -53,4 +52,5 @@ async def ws_endpoint(ws: WebSocket):
 
 @app.get('/health')
 async def health():
-    return {'status': 'ok', 'version': '6.5'}
+    return {'status': 'ok', 'version': '6.6',
+            'env': os.getenv('NORIBEN_ENV','unknown')}

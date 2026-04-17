@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html data-theme="dark"><head>
-<meta charset="utf-8"><title>Noriben SOC v6.5</title>
+<meta charset="utf-8"><title>Noriben SOC v6.6</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>*{font-family:system-ui,sans-serif}.ta{background:rgba(99,102,241,.3);color:#a5b4fc}</style>
 </head>
@@ -11,8 +11,10 @@
   <div class="flex items-center gap-4">
     <button onclick="var h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark'"
             class="p-2 rounded-xl bg-slate-800 text-xl">☀️</button>
-    <h1 class="text-3xl font-black bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-      Noriben SOC v6.5</h1>
+    <div>
+      <h1 class="text-3xl font-black bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Noriben SOC v6.6</h1>
+      <div class="text-xs text-slate-500 mt-1">Env: <span id="env-label" class="text-blue-400 font-mono">detecting...</span></div>
+    </div>
   </div>
   <div id="ws-st" class="px-4 py-2 rounded-xl bg-rose-500/20 text-rose-300 text-sm font-semibold">⚫ Offline</div>
 </header>
@@ -36,7 +38,7 @@
      ondragover="event.preventDefault()" ondrop="hDrop(event)" onclick="document.getElementById('fi').click()">
   <div class="text-5xl mb-4">☁️</div>
   <h2 class="text-2xl font-black mb-2">Drop Malware Sample</h2>
-  <p class="text-slate-400">.exe .dll .evtx .ps1 .scr</p>
+  <p class="text-slate-400">.exe .dll .evtx .ps1 .scr — Static + Dynamic (QEMU Win10)</p>
   <input id="fi" type="file" multiple class="hidden" onchange="upload(this.files)">
 </div>
 <div id="pb" class="hidden h-2 bg-slate-800 rounded-full overflow-hidden">
@@ -67,10 +69,10 @@
     <div id="td" class="hidden grid grid-cols-2 gap-4">
       <div class="p-4 bg-purple-500/10 rounded-2xl border border-purple-500/30 text-center">
         <div class="text-3xl font-black text-purple-400" id="dn">0</div>
-        <div class="text-purple-300 text-sm mt-1">Network</div></div>
+        <div class="text-purple-300 text-sm mt-1">Network IOCs</div></div>
       <div class="p-4 bg-rose-500/10 rounded-2xl border border-rose-500/30 text-center">
         <div class="text-3xl font-black text-rose-400" id="df">0</div>
-        <div class="text-rose-300 text-sm mt-1">Files</div></div>
+        <div class="text-rose-300 text-sm mt-1">Files Dropped</div></div>
       <div class="p-4 bg-indigo-500/10 rounded-2xl border border-indigo-500/30 text-center">
         <div class="text-3xl font-black text-indigo-400" id="dp">0</div>
         <div class="text-indigo-300 text-sm mt-1">Processes</div></div>
@@ -85,16 +87,17 @@
       <tbody id="rt"></tbody>
     </table>
   </div>
-
   <div class="space-y-6">
     <div class="bg-slate-900 p-6 rounded-3xl border border-slate-800">
       <h3 class="text-lg font-black mb-4 text-orange-400">🎯 MITRE ATT&CK</h3>
       <div id="mi" class="space-y-2"></div>
     </div>
     <div class="bg-slate-900 p-6 rounded-3xl border border-slate-800 text-center space-y-3">
-      <h4 class="font-bold">🖥️ QEMU Win10 Live</h4>
+      <h4 class="font-bold">🖥️ QEMU Win10 — Live Sandbox</h4>
       <div class="bg-slate-800 p-3 rounded-xl text-sm">
-        <strong>VNC: localhost:5901</strong> | hasło: noriben</div>
+        <strong>VNC: localhost:5901</strong> | hasło: noriben<br>
+        <small class="text-slate-500">Izolowana VM — bezpieczna analiza malware</small>
+      </div>
       <button onclick="window.open('vnc://localhost:5901')"
         class="w-full bg-gradient-to-r from-purple-600 to-violet-600 py-3 rounded-2xl font-bold hover:opacity-90">
         🔴 Open VNC Live</button>
@@ -117,6 +120,9 @@ function connectWS(){
     document.getElementById('mm').textContent=d.filter(s=>s.severity>=70).length;};
 }
 connectWS();
+fetch('/health').then(r=>r.json()).then(d=>{
+  document.getElementById('env-label').textContent=d.env||'unknown';
+});
 document.querySelectorAll('.tb').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('.tb').forEach(x=>x.classList.remove('ta'));
   b.classList.add('ta');

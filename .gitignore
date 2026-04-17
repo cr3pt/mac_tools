@@ -3,3 +3,4 @@ __pycache__/
 .env
 *.pml
 vms/win10.qcow2
+vms/win10.iso
