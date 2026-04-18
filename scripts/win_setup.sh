@@ -1,7 +1,5 @@
 #!/bin/bash
 # Noriben SOC v6.8 — win_setup.sh — Cr3pT
-# Win10: pobiera ISO Microsoft -> instalacja na qcow2 przez VNC
-# Win11: pobiera ISO Microsoft -> instalacja na qcow2 przez VNC (bypass TPM przez rejestr)
 set -e
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VMS="$DIR/vms"
@@ -9,7 +7,6 @@ mkdir -p "$VMS"
 source "$DIR/scripts/detect_env.sh"
 [ "$NORIBEN_ENV" = "LINUX_KVM" ] && ACCEL="-accel kvm" || ACCEL="-accel tcg,thread=multi"
 
-# ─── Pobierz plik z wieloma próbami i sprawdzeniem rozmiaru ──
 download_file() {
     local URL=$1 OUT=$2 MIN_SIZE=$3 DESC=$4
     local ATTEMPT=0 MAX=10
@@ -17,8 +14,7 @@ download_file() {
         ATTEMPT=$((ATTEMPT + 1))
         echo "[$DESC] Pobieranie — proba $ATTEMPT/$MAX..."
         if command -v curl &>/dev/null; then
-            curl -L --max-time 7200 --connect-timeout 60 \
-                 --retry 0 --progress-bar -o "$OUT" "$URL" || true
+            curl -L --max-time 7200 --connect-timeout 60 --retry 0 --progress-bar -o "$OUT" "$URL" || true
         else
             wget --tries=1 --timeout=7200 --show-progress -O "$OUT" "$URL" || true
         fi
@@ -38,19 +34,25 @@ download_file() {
     return 1
 }
 
-# ─── Wspólna funkcja: utwórz dysk + uruchom instalację przez VNC ──
+next_free_port() {
+    local p=$1
+    while ss -tln 2>/dev/null | awk '{print $4}' | grep -q ":$p$"; do p=$((p+1)); done
+    echo $p
+}
+
 install_vm() {
     local NAME=$1 ISO=$2 QCOW2=$3 VNC_DISP=$4 MON_PORT=$5
     local VNC_PORT=$((5900 + VNC_DISP))
+    local MP=$MON_PORT
+    while ss -tln 2>/dev/null | awk '{print $4}' | grep -q ":$MP$"; do MP=$((MP+1)); done
 
     qemu-img create -f qcow2 "$QCOW2" 60G
     echo "[$NAME] Dysk OK: $(du -sh $QCOW2 | cut -f1)"
 
-    # Sprawdź wolny port VNC
-    ss -tlnp 2>/dev/null | grep -q ":$VNC_PORT " && {
+    if ss -tlnp 2>/dev/null | grep -q ":$VNC_PORT "; then
         VNC_DISP=$((VNC_DISP + 10)); VNC_PORT=$((5900 + VNC_DISP))
         echo "[$NAME] Port zajety — uzywam VNC :$VNC_DISP (port $VNC_PORT)"
-    }
+    fi
 
     echo ""
     echo "======================================================"
@@ -74,15 +76,14 @@ install_vm() {
       -netdev user,id=net0 \
       -device virtio-net-pci,netdev=net0 \
       -vnc 0.0.0.0:$VNC_DISP \
-      -monitor tcp:0.0.0.0:$MON_PORT,server,nowait \
+      -monitor tcp:0.0.0.0:$MP,server,nowait \
       -usbdevice tablet \
       -vga std \
       -daemonize
 
-    echo "[$NAME] QEMU PID uruchomiony — polacz VNC i zainstaluj system"
+    echo "[$NAME] QEMU uruchomiony — monitor port: $MP"
 }
 
-# ─── WIN10 ────────────────────────────────────────────────
 setup_win10() {
     local QCOW2="$VMS/win10.qcow2" ISO="$VMS/win10.iso"
     if [ -f "$QCOW2" ] && [ "$(stat -c%s "$QCOW2" 2>/dev/null || stat -f%z "$QCOW2")" -gt 1073741824 ]; then
@@ -90,57 +91,38 @@ setup_win10() {
     fi
     if [ ! -f "$ISO" ] || [ "$(stat -c%s "$ISO" 2>/dev/null || stat -f%z "$ISO" 2>/dev/null || echo 0)" -lt 3221225472 ]; then
         rm -f "$ISO"
-        download_file \
-            "https://go.microsoft.com/fwlink/p/?LinkID=2208844&clcid=0x409&culture=en-us&country=US" \
-            "$ISO" 3221225472 "win10-iso" || {
-            echo "[win10] Pobierz ISO recznie:"
-            echo "  https://www.microsoft.com/en-us/evalcenter/evaluate-windows-10-enterprise"
-            echo "  Zapisz jako: $ISO"
+        download_file "https://go.microsoft.com/fwlink/p/?LinkID=2208844&clcid=0x409&culture=en-us&country=US" "$ISO" 3221225472 "win10-iso" || {
+            echo "[win10] Pobierz ISO recznie: https://www.microsoft.com/en-us/evalcenter/evaluate-windows-10-enterprise"
+            echo "[win10] Zapisz jako: $ISO"
             return 1
         }
     fi
     install_vm "win10" "$ISO" "$QCOW2" 1 4440
 }
 
-# ─── WIN11 ────────────────────────────────────────────────
 setup_win11() {
     local QCOW2="$VMS/win11.qcow2" ISO="$VMS/win11.iso"
     if [ -f "$QCOW2" ] && [ "$(stat -c%s "$QCOW2" 2>/dev/null || stat -f%z "$QCOW2")" -gt 1073741824 ]; then
         echo "[win11] qcow2 istnieje — pomijam"; return 0
     fi
-
     echo "[win11] UWAGA: Gotowy qcow2 Win11 nie jest publicznie dostepny."
-    echo "[win11] Opcje:"
-    echo "  A) Dostarczy wlasny qcow2: cp win11.qcow2 $QCOW2"
-    echo "  B) Pobierz ISO i zainstaluj przez VNC (automatycznie ponizej)"
-    echo "  C) Konwersja: qemu-img convert -f vdi -O qcow2 win11.vdi $QCOW2"
-    echo ""
-
-    # Pobierz ISO Win11 z Microsoft (bez TPM — bypass przez rejestr podczas instalacji)
+    echo "[win11] Opcje: A) wlasny qcow2 B) instalacja z ISO C) konwersja z VDI/VMDK/VHDX"
     if [ ! -f "$ISO" ] || [ "$(stat -c%s "$ISO" 2>/dev/null || stat -f%z "$ISO" 2>/dev/null || echo 0)" -lt 3221225472 ]; then
         rm -f "$ISO"
-        # Win11 Multi-Edition ISO x64
-        WIN11_URL="https://go.microsoft.com/fwlink/?linkid=2156292"
-        download_file "$WIN11_URL" "$ISO" 3221225472 "win11-iso" || {
-            echo "[win11] Pobierz ISO recznie:"
-            echo "  https://www.microsoft.com/en-us/evalcenter/evaluate-windows-11-enterprise"
-            echo "  Zapisz jako: $ISO"
-            echo "[win11] Tworzę pusty dysk jako placeholder..."
+        download_file "https://go.microsoft.com/fwlink/?linkid=2156292" "$ISO" 3221225472 "win11-iso" || {
+            echo "[win11] Pobierz ISO recznie: https://www.microsoft.com/en-us/evalcenter/evaluate-windows-11-enterprise"
+            echo "[win11] Zapisz jako: $ISO"
             qemu-img create -f qcow2 "$QCOW2" 60G
             return 0
         }
     fi
-
-    # Uwaga o bypass TPM
     echo ""
     echo "[win11] Bypass TPM podczas instalacji:"
-    echo "  Gdy instalator pokaze blad TPM — otwórz cmd: Shift+F10"
-    echo "  i wpisz:"
+    echo "  Shift+F10 i wpisz:"
     echo "    reg add HKLM\\SYSTEM\\Setup\\LabConfig /v BypassTPMCheck /t REG_DWORD /d 1 /f"
     echo "    reg add HKLM\\SYSTEM\\Setup\\LabConfig /v BypassSecureBootCheck /t REG_DWORD /d 1 /f"
     echo "    reg add HKLM\\SYSTEM\\Setup\\LabConfig /v BypassRAMCheck /t REG_DWORD /d 1 /f"
     echo ""
-
     install_vm "win11" "$ISO" "$QCOW2" 2 4441
 }
 
