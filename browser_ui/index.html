@@ -1,83 +1,100 @@
 <!DOCTYPE html>
-<html data-theme="dark"><head>
-<meta charset="utf-8"><title>Noriben SOC v6.6</title>
+<html><head>
+<meta charset="utf-8"><title>Noriben SOC v6.8</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>*{font-family:system-ui,sans-serif}.ta{background:rgba(99,102,241,.3);color:#a5b4fc}</style>
 </head><body class="bg-slate-950 text-slate-100 min-h-screen">
-<div class="max-w-7xl mx-auto px-6 py-10 space-y-8">
-<header class="flex justify-between items-center p-6 bg-slate-900 rounded-3xl border border-slate-800">
-  <div class="flex items-center gap-4">
-    <button onclick="var h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark'" class="p-2 rounded-xl bg-slate-800 text-xl">☀️</button>
-    <div>
-      <h1 class="text-3xl font-black bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Noriben SOC v6.6</h1>
-      <div class="text-xs text-slate-500 mt-1">Env: <span id="env-lbl" class="text-blue-400 font-mono">detecting...</span></div>
-    </div>
+<div class="max-w-7xl mx-auto px-4 py-6 space-y-5">
+<header class="flex justify-between items-center p-4 bg-slate-900 rounded-2xl border border-slate-800">
+  <div>
+    <h1 class="text-2xl font-black bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Noriben SOC v6.8</h1>
+    <div class="text-xs text-slate-500">Env: <span id="env-lbl" class="text-blue-400 font-mono">...</span> | Win10 + Win11 | Network IOC | PCAP</div>
   </div>
-  <div id="ws-st" class="px-4 py-2 rounded-xl bg-rose-500/20 text-rose-300 text-sm font-semibold">⚫ Offline</div>
+  <div id="ws-st" class="px-3 py-1 rounded-xl bg-rose-500/20 text-rose-300 text-sm">⚫ Offline</div>
 </header>
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
-  <div class="p-6 bg-slate-900 rounded-2xl border border-slate-800 text-center"><div class="text-4xl font-black text-blue-400" id="mt">0</div><div class="text-slate-400 text-sm mt-1">Sesje</div></div>
-  <div class="p-6 bg-slate-900 rounded-2xl border border-emerald-800/40 text-center"><div class="text-4xl font-black text-emerald-400" id="mc">0</div><div class="text-slate-400 text-sm mt-1">Clean</div></div>
-  <div class="p-6 bg-slate-900 rounded-2xl border border-orange-800/40 text-center"><div class="text-4xl font-black text-orange-400" id="ms">0</div><div class="text-slate-400 text-sm mt-1">Suspicious</div></div>
-  <div class="p-6 bg-slate-900 rounded-2xl border border-rose-800/40 text-center"><div class="text-4xl font-black text-rose-400" id="mm">0</div><div class="text-slate-400 text-sm mt-1">Malware</div></div>
+<div class="grid grid-cols-4 gap-3">
+  <div class="p-4 bg-slate-900 rounded-xl border border-slate-800 text-center"><div class="text-3xl font-black text-blue-400" id="mt">0</div><div class="text-xs text-slate-400 mt-1">Sesje</div></div>
+  <div class="p-4 bg-slate-900 rounded-xl border border-emerald-800/40 text-center"><div class="text-3xl font-black text-emerald-400" id="mc">0</div><div class="text-xs text-slate-400 mt-1">Clean</div></div>
+  <div class="p-4 bg-slate-900 rounded-xl border border-orange-800/40 text-center"><div class="text-3xl font-black text-orange-400" id="ms">0</div><div class="text-xs text-slate-400 mt-1">Suspicious</div></div>
+  <div class="p-4 bg-slate-900 rounded-xl border border-rose-800/40 text-center"><div class="text-3xl font-black text-rose-400" id="mm">0</div><div class="text-xs text-slate-400 mt-1">Malware</div></div>
 </div>
-<div class="border-4 border-dashed border-slate-700 hover:border-blue-500 rounded-3xl p-16 text-center cursor-pointer transition-all"
+<div class="border-2 border-dashed border-slate-700 hover:border-blue-500 rounded-2xl p-10 text-center cursor-pointer transition-all"
      ondragover="event.preventDefault()" ondrop="hDrop(event)" onclick="document.getElementById('fi').click()">
-  <div class="text-5xl mb-4">☁️</div>
-  <h2 class="text-2xl font-black mb-2">Drop Malware Sample</h2>
-  <p class="text-slate-400">.exe .dll .evtx .ps1 .scr — Static + Dynamic (QEMU Win10)</p>
+  <div class="text-4xl mb-2">☁️</div>
+  <p class="font-bold mb-1">Drop Malware Sample</p>
+  <p class="text-slate-400 text-sm">.exe .dll .evtx .ps1 — analiza rownolegla Win10+Win11 + przechwyt PCAP</p>
   <input id="fi" type="file" multiple class="hidden" onchange="upload(this.files)">
 </div>
-<div id="pb" class="hidden h-2 bg-slate-800 rounded-full overflow-hidden">
-  <div id="pf" class="h-2 bg-gradient-to-r from-blue-500 to-purple-600 transition-all" style="width:0%"></div>
-</div>
-<div id="res" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-8">
-  <div class="bg-slate-900 p-8 rounded-3xl border border-slate-800 space-y-6">
-    <div class="flex justify-between">
-      <h2 class="text-xl font-black">🔬 Wyniki</h2>
-      <span id="db" class="hidden px-3 py-1 bg-purple-600/30 text-purple-300 rounded-xl text-sm">Dynamic ✓</span>
+<div id="pb" class="hidden h-1 bg-slate-800 rounded-full"><div id="pf" class="h-1 bg-blue-500 transition-all rounded-full" style="width:0%"></div></div>
+
+<div id="res" class="hidden space-y-4">
+  <!-- Static -->
+  <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800">
+    <h2 class="font-black text-lg mb-3">🔬 Statyczna</h2>
+    <div class="grid grid-cols-3 gap-3 mb-3">
+      <div class="p-3 bg-blue-500/10 rounded-xl text-center"><div class="text-2xl font-black text-blue-400" id="sy">0</div><div class="text-xs text-blue-300">YARA</div></div>
+      <div class="p-3 bg-emerald-500/10 rounded-xl text-center"><div class="text-2xl font-black text-emerald-400" id="ss">0</div><div class="text-xs text-emerald-300">SIGMA</div></div>
+      <div class="p-3 bg-orange-500/10 rounded-xl text-center"><div class="text-2xl font-black text-orange-400" id="se">0</div><div class="text-xs text-orange-300">EVTX</div></div>
     </div>
-    <div class="flex bg-slate-800/50 rounded-xl p-1">
-      <button class="tb flex-1 py-3 rounded-xl font-semibold ta" data-t="s">Static</button>
-      <button class="tb flex-1 py-3 rounded-xl font-semibold" data-t="d">Dynamic</button>
+    <table class="w-full text-xs bg-slate-800/50 rounded-xl"><thead><tr class="text-slate-400"><th class="p-2 text-left">Regula</th><th class="p-2">Typ</th><th class="p-2">Sev</th></tr></thead><tbody id="rt"></tbody></table>
+    <div class="mt-3 p-3 bg-slate-800/50 rounded-xl"><div class="text-xs font-bold text-orange-400 mb-2">MITRE ATT&CK</div><div id="mi" class="flex flex-wrap gap-1"></div></div>
+  </div>
+
+  <!-- Dual VM -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <!-- Win10 -->
+    <div class="bg-slate-900 p-5 rounded-2xl border border-blue-800/40">
+      <h3 class="font-black text-blue-300 mb-3">🪟 Win10 Sandbox</h3>
+      <div class="grid grid-cols-2 gap-2 text-center text-xs mb-3">
+        <div class="bg-purple-500/10 p-2 rounded-lg"><div class="text-xl font-black text-purple-400" id="w10net">-</div><div class="text-purple-300">IOC siec</div></div>
+        <div class="bg-rose-500/10 p-2 rounded-lg"><div class="text-xl font-black text-rose-400" id="w10f">-</div><div class="text-rose-300">Pliki</div></div>
+        <div class="bg-indigo-500/10 p-2 rounded-lg"><div class="text-xl font-black text-indigo-400" id="w10p">-</div><div class="text-indigo-300">Procesy</div></div>
+        <div class="bg-yellow-500/10 p-2 rounded-lg"><div class="text-xl font-black text-yellow-400" id="w10r">-</div><div class="text-yellow-300">Rejestr</div></div>
+      </div>
+      <div class="text-xs text-slate-500 text-center mb-2">VNC: localhost:5901 | haslo: noriben</div>
+      <button onclick="window.open('vnc://localhost:5901')" class="w-full bg-blue-600/40 hover:bg-blue-600 py-2 rounded-xl text-sm font-bold">🔴 VNC Win10</button>
     </div>
-    <div id="ts" class="grid grid-cols-3 gap-4">
-      <div class="p-4 bg-blue-500/10 rounded-2xl border border-blue-500/30 text-center"><div class="text-3xl font-black text-blue-400" id="sy">0</div><div class="text-blue-300 text-sm mt-1">YARA</div></div>
-      <div class="p-4 bg-emerald-500/10 rounded-2xl border border-emerald-500/30 text-center"><div class="text-3xl font-black text-emerald-400" id="ss">0</div><div class="text-emerald-300 text-sm mt-1">SIGMA</div></div>
-      <div class="p-4 bg-orange-500/10 rounded-2xl border border-orange-500/30 text-center"><div class="text-3xl font-black text-orange-400" id="se">0</div><div class="text-orange-300 text-sm mt-1">EVTX</div></div>
+    <!-- Win11 -->
+    <div class="bg-slate-900 p-5 rounded-2xl border border-purple-800/40">
+      <h3 class="font-black text-purple-300 mb-3">🪟 Win11 Sandbox</h3>
+      <div class="grid grid-cols-2 gap-2 text-center text-xs mb-3">
+        <div class="bg-purple-500/10 p-2 rounded-lg"><div class="text-xl font-black text-purple-400" id="w11net">-</div><div class="text-purple-300">IOC siec</div></div>
+        <div class="bg-rose-500/10 p-2 rounded-lg"><div class="text-xl font-black text-rose-400" id="w11f">-</div><div class="text-rose-300">Pliki</div></div>
+        <div class="bg-indigo-500/10 p-2 rounded-lg"><div class="text-xl font-black text-indigo-400" id="w11p">-</div><div class="text-indigo-300">Procesy</div></div>
+        <div class="bg-yellow-500/10 p-2 rounded-lg"><div class="text-xl font-black text-yellow-400" id="w11r">-</div><div class="text-yellow-300">Rejestr</div></div>
+      </div>
+      <div class="text-xs text-slate-500 text-center mb-2">VNC: localhost:5902 | haslo: noriben</div>
+      <button onclick="window.open('vnc://localhost:5902')" class="w-full bg-purple-600/40 hover:bg-purple-600 py-2 rounded-xl text-sm font-bold">🔴 VNC Win11</button>
     </div>
-    <div id="td" class="hidden grid grid-cols-2 gap-4">
-      <div class="p-4 bg-purple-500/10 rounded-2xl border border-purple-500/30 text-center"><div class="text-3xl font-black text-purple-400" id="dn">0</div><div class="text-purple-300 text-sm mt-1">Network IOCs</div></div>
-      <div class="p-4 bg-rose-500/10 rounded-2xl border border-rose-500/30 text-center"><div class="text-3xl font-black text-rose-400" id="df">0</div><div class="text-rose-300 text-sm mt-1">Files Dropped</div></div>
-      <div class="p-4 bg-indigo-500/10 rounded-2xl border border-indigo-500/30 text-center"><div class="text-3xl font-black text-indigo-400" id="dp">0</div><div class="text-indigo-300 text-sm mt-1">Processes</div></div>
-      <div class="p-4 bg-yellow-500/10 rounded-2xl border border-yellow-500/30 text-center"><div class="text-3xl font-black text-yellow-400" id="dr">0</div><div class="text-yellow-300 text-sm mt-1">Registry</div></div>
-    </div>
-    <table class="w-full text-sm bg-slate-800/50 rounded-xl">
-      <thead><tr class="text-slate-400 text-left"><th class="p-3">Regula</th><th class="p-3">Typ</th><th class="p-3">Severity</th></tr></thead>
-      <tbody id="rt"></tbody>
+  </div>
+
+  <!-- Network IOC merged -->
+  <div class="bg-slate-900 p-5 rounded-2xl border border-teal-800/40">
+    <h3 class="font-black text-teal-300 mb-3">🌐 Network IOC (PCAP merged)</h3>
+    <table class="w-full text-xs bg-slate-800/50 rounded-xl">
+      <thead><tr class="text-slate-400"><th class="p-2 text-left">Typ</th><th class="p-2 text-left">Wartosc</th><th class="p-2">Proto</th><th class="p-2">Sev</th><th class="p-2">OS</th></tr></thead>
+      <tbody id="nioc"></tbody>
     </table>
   </div>
-  <div class="space-y-6">
-    <div class="bg-slate-900 p-6 rounded-3xl border border-slate-800">
-      <h3 class="text-lg font-black mb-4 text-orange-400">🎯 MITRE ATT&CK</h3>
-      <div id="mi" class="space-y-2"></div>
-    </div>
-    <div class="bg-slate-900 p-6 rounded-3xl border border-slate-800 text-center space-y-3">
-      <h4 class="font-bold">🖥️ QEMU Win10 — Live Sandbox</h4>
-      <div class="bg-slate-800 p-3 rounded-xl text-sm">
-        <strong>VNC: localhost:5901</strong> | haslo: noriben<br>
-        <small class="text-slate-500">Izolowana VM — bezpieczna analiza malware</small>
-      </div>
-      <button onclick="window.open('vnc://localhost:5901')" class="w-full bg-gradient-to-r from-purple-600 to-violet-600 py-3 rounded-2xl font-bold hover:opacity-90">🔴 Open VNC Live</button>
-      <a href="http://localhost:3000" target="_blank" class="block w-full bg-gradient-to-r from-orange-600 to-yellow-600 py-3 rounded-2xl font-bold hover:opacity-90">📊 Grafana Dashboard</a>
+
+  <!-- OS Diff -->
+  <div class="bg-slate-900 p-5 rounded-2xl border border-amber-800/40">
+    <h3 class="font-black text-amber-300 mb-3">🔀 Roznice Win10 vs Win11</h3>
+    <div class="grid grid-cols-2 gap-4 text-xs">
+      <div><div class="text-blue-400 font-bold mb-1">Tylko Win10</div><div id="diff10" class="space-y-1"></div></div>
+      <div><div class="text-purple-400 font-bold mb-1">Tylko Win11</div><div id="diff11" class="space-y-1"></div></div>
     </div>
   </div>
+
+  <a href="http://localhost:3000" target="_blank" class="block bg-slate-900 p-3 rounded-xl border border-orange-800/40 text-center hover:bg-slate-800">
+    <span class="text-orange-400 font-bold">📊 Grafana Dashboard</span>
+  </a>
 </div>
 </div>
 <script>
 function connectWS(){
   const w=new WebSocket('ws://'+location.host+'/ws');
-  w.onopen=()=>{const e=document.getElementById('ws-st');e.textContent='🟢 Live';e.className='px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-300 text-sm font-semibold';};
+  w.onopen=()=>{const e=document.getElementById('ws-st');e.textContent='🟢 Live';e.className='px-3 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 text-sm';};
   w.onclose=()=>setTimeout(connectWS,3000);
   w.onmessage=(e)=>{const d=JSON.parse(e.data);
     document.getElementById('mt').textContent=d.length;
@@ -86,12 +103,7 @@ function connectWS(){
     document.getElementById('mm').textContent=d.filter(s=>s.severity>=70).length;};
 }
 connectWS();
-fetch('/health').then(r=>r.json()).then(d=>document.getElementById('env-lbl').textContent=d.env||'unknown');
-document.querySelectorAll('.tb').forEach(b=>b.addEventListener('click',()=>{
-  document.querySelectorAll('.tb').forEach(x=>x.classList.remove('ta'));b.classList.add('ta');
-  document.getElementById('ts').classList.toggle('hidden',b.dataset.t!=='s');
-  document.getElementById('td').classList.toggle('hidden',b.dataset.t!=='d');
-}));
+fetch('/health').then(r=>r.json()).then(d=>document.getElementById('env-lbl').textContent=d.env||'?');
 async function upload(files){
   document.getElementById('pb').classList.remove('hidden');
   for(let i=0;i<files.length;i++){
@@ -102,28 +114,32 @@ async function upload(files){
     poll(d.job_id);
   }
 }
-async function poll(id){
-  const iv=setInterval(async()=>{
-    const r=await fetch('/job/'+id);const d=await r.json();
-    if(d.status==='SUCCESS'){clearInterval(iv);show(d.result);}
-  },2000);
-}
+async function poll(id){const iv=setInterval(async()=>{
+  const r=await fetch('/job/'+id);const d=await r.json();
+  if(d.status==='SUCCESS'){clearInterval(iv);show(d.result);}
+},2000);}
 function show(data){
   document.getElementById('res').classList.remove('hidden');
   document.getElementById('sy').textContent=data.static?.yara?.length||0;
   document.getElementById('ss').textContent=data.static?.sigma?.length||0;
   document.getElementById('se').textContent=data.static?.evtx?.length||0;
-  if(data.dynamic){document.getElementById('db').classList.remove('hidden');
-    document.getElementById('dn').textContent=data.dynamic.network?.length||0;
-    document.getElementById('df').textContent=data.dynamic.files_dropped?.length||0;
-    document.getElementById('dp').textContent=data.dynamic.processes?.length||0;
-    document.getElementById('dr').textContent=data.dynamic.registry?.length||0;}
+  const w10=data.dynamic_win10||{};const w11=data.dynamic_win11||{};
+  document.getElementById('w10net').textContent=w10.network_iocs?.length??'-';
+  document.getElementById('w10f').textContent=w10.files_dropped?.length??'-';
+  document.getElementById('w10p').textContent=w10.processes?.length??'-';
+  document.getElementById('w10r').textContent=w10.registry?.length??'-';
+  document.getElementById('w11net').textContent=w11.network_iocs?.length??'-';
+  document.getElementById('w11f').textContent=w11.files_dropped?.length??'-';
+  document.getElementById('w11p').textContent=w11.processes?.length??'-';
+  document.getElementById('w11r').textContent=w11.registry?.length??'-';
   const hits=[...(data.static?.yara||[]),...(data.static?.sigma||[])];
-  document.getElementById('rt').innerHTML=hits.map(h=>
-    `<tr class="border-t border-slate-700"><td class="p-2 font-mono text-xs">${h.rule}</td><td class="p-2 text-center text-slate-400 text-xs">${h.type}</td><td class="p-2 text-center"><span class="px-2 py-0.5 rounded text-xs ${h.severity==='HIGH'?'bg-rose-500/30 text-rose-300':'bg-yellow-500/30 text-yellow-300'}">${h.severity}</span></td></tr>`).join('');
-  document.getElementById('mi').innerHTML=(data.mitre||[]).map(t=>
-    `<div class="flex items-center gap-2 p-2 bg-orange-500/10 rounded-xl"><div class="w-2 h-2 bg-orange-500 rounded-full"></div><span class="font-mono text-xs text-orange-300">${t}</span></div>`).join('');
+  document.getElementById('rt').innerHTML=hits.map(h=>'<tr class="border-t border-slate-700"><td class="p-2 font-mono">'+h.rule+'</td><td class="p-2 text-center text-slate-400">'+h.type+'</td><td class="p-2 text-center"><span class="px-2 py-0.5 rounded '+(h.severity==='HIGH'?'bg-rose-500/30 text-rose-300':'bg-yellow-500/30 text-yellow-300')+'">'+h.severity+'</span></td></tr>').join('');
+  document.getElementById('mi').innerHTML=(data.mitre||[]).map(t=>'<span class="px-2 py-0.5 bg-orange-500/20 text-orange-300 rounded font-mono text-xs">'+t+'</span>').join('');
+  const iocs=(data.dynamic_merged?.network_iocs||[]);
+  document.getElementById('nioc').innerHTML=iocs.map(i=>'<tr class="border-t border-slate-700"><td class="p-2 text-teal-400">'+i.type+'</td><td class="p-2 font-mono max-w-xs truncate">'+i.value+'</td><td class="p-2 text-center text-slate-400">'+(i.proto||'-')+'</td><td class="p-2 text-center"><span class="px-1 rounded '+(i.severity==='HIGH'?'bg-rose-500/30 text-rose-300':'bg-yellow-500/30 text-yellow-300')+'">'+i.severity+'</span></td><td class="p-2 text-center text-xs">'+(i.seen_on||[]).join('+')+'</td></tr>').join('');
+  const diff=data.dynamic_merged?.os_diff||{};
+  document.getElementById('diff10').innerHTML=(diff.only_win10?.network||[]).map(i=>'<div class="p-1 bg-blue-500/10 rounded font-mono truncate">'+i.value+'</div>').join('')||'<div class="text-slate-500">—</div>';
+  document.getElementById('diff11').innerHTML=(diff.only_win11?.network||[]).map(i=>'<div class="p-1 bg-purple-500/10 rounded font-mono truncate">'+i.value+'</div>').join('')||'<div class="text-slate-500">—</div>';
 }
 function hDrop(e){e.preventDefault();upload(e.dataTransfer.files);}
-document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();const q=prompt('SHA256 / filename:');if(q)fetch('/sessions/'+q).then(r=>r.json()).then(show);}});
 </script></body></html>

@@ -1,9 +1,8 @@
 #!/bin/bash
-# Noriben SOC v6.6 — detect_env.sh — Cr3pT
 detect_env() {
     OS=$(uname -s)
     if [ "$OS" = "Darwin" ]; then
-        CHIP=$(sysctl -n machdep.cpu.brand_string 2>/dev/null ||                system_profiler SPHardwareDataType 2>/dev/null | grep "Chip" | awk '{print $NF}')
+        CHIP=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "unknown")
         if   echo "$CHIP" | grep -qi "M4"; then echo "APPLE_M4"
         elif echo "$CHIP" | grep -qi "M2"; then echo "APPLE_M2"
         elif echo "$CHIP" | grep -qi "M1"; then echo "APPLE_M1"

@@ -1,6 +1,6 @@
 __pycache__/
 *.pyc
 .env
-*.pml
-vms/win10.qcow2
-vms/win10.iso
+vms/*.qcow2
+vms/*.iso
+vms/*.pcap

@@ -1,8 +1,9 @@
 import yara
 from pathlib import Path
-RULES_DIR = Path('/shared/yara_rules/rules')
+RULES_DIR = Path('/shared/yara_rules')
 def run_yara_scan(data: bytes) -> list:
     hits = []
+    if not RULES_DIR.exists(): return hits
     for f in RULES_DIR.rglob('*.yar'):
         try:
             for m in yara.compile(str(f)).match(data=data):
