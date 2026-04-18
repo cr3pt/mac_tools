@@ -2,69 +2,107 @@
 # Noriben SOC v6.6 — generate_compose.sh — Cr3pT
 source "$(dirname $0)/detect_env.sh"
 COMPOSE_FILE="$(dirname $0)/../docker-compose.yml"
+
 case "$NORIBEN_ENV" in
-  APPLE_M4)    API_PLATFORM="linux/arm64"; QEMU_ACCEL="tcg" ;;
-  APPLE_M2)    API_PLATFORM="linux/arm64"; QEMU_ACCEL="tcg" ;;
-  APPLE_M1)    API_PLATFORM="linux/arm64"; QEMU_ACCEL="tcg" ;;
-  APPLE_INTEL) API_PLATFORM="linux/amd64"; QEMU_ACCEL="tcg" ;;
-  LINUX_KVM)   API_PLATFORM="linux/amd64"; QEMU_ACCEL="kvm" ;;
-  *)           API_PLATFORM="linux/amd64"; QEMU_ACCEL="tcg" ;;
+  APPLE_M4|APPLE_M2|APPLE_M1) API_PLATFORM="linux/arm64"; QEMU_ACCEL="tcg" ;;
+  LINUX_KVM)                   API_PLATFORM="linux/amd64"; QEMU_ACCEL="kvm" ;;
+  *)                           API_PLATFORM="linux/amd64"; QEMU_ACCEL="tcg" ;;
 esac
-KVM_DEVICE=""
-[ "$QEMU_ACCEL" = "kvm" ] && KVM_DEVICE="    devices:\n      - /dev/kvm:/dev/kvm"
-cat > "$COMPOSE_FILE" << YAML
-version: "3.8"
-services:
-  postgres:
-    image: postgres:15
-    platform: linux/amd64
-    environment: {POSTGRES_DB: noriben, POSTGRES_USER: noriben, POSTGRES_PASSWORD: noriben123}
-    ports: ["5432:5432"]
-    volumes: [noriben_pg:/var/lib/postgresql/data]
-    healthcheck:
-      test: ["CMD","pg_isready","-U","noriben"]
-      interval: 5s
-  redis:
-    image: redis:7-alpine
-    platform: linux/amd64
-    ports: ["6379:6379"]
-  api:
-    build: {context: ., dockerfile: Dockerfile, platform: ${API_PLATFORM}}
-    ports: ["8000:8000"]
-    volumes: [".:/app"]
-    environment:
-      DATABASE_URL: postgresql://noriben:noriben123@postgres/noriben
-      CELERY_BROKER: redis://redis:6379/0
-      NORIBEN_ENV: ${NORIBEN_ENV}
-    depends_on:
-      postgres: {condition: service_healthy}
-  celery:
-    build: {context: ., dockerfile: Dockerfile, platform: ${API_PLATFORM}}
-    command: celery -A noriben_soc.tasks worker --loglevel=info --concurrency=4
-    volumes: [".:/app","./vms:/shared"]
-    environment:
-      DATABASE_URL: postgresql://noriben:noriben123@postgres/noriben
-      CELERY_BROKER: redis://redis:6379/0
-      QEMU_ACCEL: ${QEMU_ACCEL}
-    depends_on: [redis, postgres]
-  qemu:
-    image: qemuwm/win10-noriben:latest
-    platform: linux/amd64
-    privileged: true
-    volumes: ["./vms:/shared"]
-    ports: ["5901:5900","4444:4444"]
-$(echo -e "$KVM_DEVICE")
-    environment:
-      QEMU_ACCEL: ${QEMU_ACCEL}
-  grafana:
-    image: grafana/grafana:latest
-    ports: ["3000:3000"]
-    environment: {GF_SECURITY_ADMIN_PASSWORD: admin}
-    volumes:
-      - noriben_grafana:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
-volumes:
-  noriben_pg: {}
-  noriben_grafana: {}
-YAML
-echo "[generate_compose] docker-compose.yml OK ($NORIBEN_ENV | $API_PLATFORM | $QEMU_ACCEL)"
+
+# Uzywamy python3 do zapisu YAML — bash heredoc expanduje ${} w YAML co psuje docker compose
+python3 - <<PYEOF
+import os, sys
+api  = "$API_PLATFORM"
+accel= "$QEMU_ACCEL"
+kvm  = "$NORIBEN_ENV" == "LINUX_KVM"
+kvm_block = "\n    devices:\n      - /dev/kvm:/dev/kvm" if kvm else ""
+
+yml = (
+"version: \"3.8\"\n"
+"services:\n"
+"  postgres:\n"
+"    image: postgres:15\n"
+"    platform: linux/amd64\n"
+"    environment:\n"
+"      POSTGRES_DB: noriben\n"
+"      POSTGRES_USER: noriben\n"
+"      POSTGRES_PASSWORD: noriben123\n"
+"    ports:\n"
+"      - \"5432:5432\"\n"
+"    volumes:\n"
+"      - noriben_pg:/var/lib/postgresql/data\n"
+"    healthcheck:\n"
+"      test: [\"CMD\", \"pg_isready\", \"-U\", \"noriben\"]\n"
+"      interval: 5s\n"
+"\n"
+"  redis:\n"
+"    image: redis:7-alpine\n"
+"    platform: linux/amd64\n"
+"    ports:\n"
+"      - \"6379:6379\"\n"
+"\n"
+f"  api:\n"
+f"    build:\n"
+f"      context: .\n"
+f"      dockerfile: Dockerfile\n"
+f"      platform: {api}\n"
+"    ports:\n"
+"      - \"8000:8000\"\n"
+"    volumes:\n"
+"      - .:/app\n"
+"    environment:\n"
+"      DATABASE_URL: postgresql://noriben:noriben123@postgres/noriben\n"
+"      CELERY_BROKER: redis://redis:6379/0\n"
+f"      NORIBEN_ENV: {accel}\n"
+"    depends_on:\n"
+"      postgres:\n"
+"        condition: service_healthy\n"
+"\n"
+f"  celery:\n"
+f"    build:\n"
+f"      context: .\n"
+f"      dockerfile: Dockerfile\n"
+f"      platform: {api}\n"
+"    command: celery -A noriben_soc.tasks worker --loglevel=info --concurrency=4\n"
+"    volumes:\n"
+"      - .:/app\n"
+"      - ./vms:/shared\n"
+"    environment:\n"
+"      DATABASE_URL: postgresql://noriben:noriben123@postgres/noriben\n"
+"      CELERY_BROKER: redis://redis:6379/0\n"
+f"      QEMU_ACCEL: {accel}\n"
+"    depends_on:\n"
+"      - redis\n"
+"      - postgres\n"
+"\n"
+f"  qemu:\n"
+"    image: qemuwm/win10-noriben:latest\n"
+"    platform: linux/amd64\n"
+"    privileged: true\n"
+"    volumes:\n"
+"      - ./vms:/shared\n"
+"    ports:\n"
+"      - \"5901:5900\"\n"
+"      - \"4444:4444\"\n"
++ (kvm_block.lstrip("\n") + "\n" if kvm else "")
++ "    environment:\n"
+f"      QEMU_ACCEL: {accel}\n"
+"\n"
+"  grafana:\n"
+"    image: grafana/grafana:latest\n"
+"    ports:\n"
+"      - \"3000:3000\"\n"
+"    environment:\n"
+"      GF_SECURITY_ADMIN_PASSWORD: admin\n"
+"    volumes:\n"
+"      - noriben_grafana:/var/lib/grafana\n"
+"      - ./grafana/provisioning:/etc/grafana/provisioning\n"
+"\n"
+"volumes:\n"
+"  noriben_pg: {}\n"
+"  noriben_grafana: {}\n"
+)
+with open("$COMPOSE_FILE", "w") as f:
+    f.write(yml)
+print(f"[generate_compose] docker-compose.yml zapisany ({api} | {accel})")
+PYEOF
