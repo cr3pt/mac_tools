@@ -151,6 +151,20 @@ Jeśli port 5901/5902 albo monitor sa zajete, skrypt przesuwa je na pierwszy wol
 
 
 
+
+## Sumy kontrolne ISO
+
+Pliki ISO Win10 i Win11 sa sprawdzane sumą SHA256 po poprawnym pobraniu.
+Jesli plik jest niekompletny albo suma nie pasuje, skrypt usuwa go i pobiera od nowa.
+Przy ponownym uruchomieniu, jesli suma kontrolna istnieje, jest uzywana do walidacji lokalnego pliku.
+
+Mozesz tez wymusic odswiezenie, usuwajac oba pliki:
+
+```bash
+rm -f vms/win11.iso vms/win11.iso.sha256
+rm -f vms/win10.iso vms/win10.iso.sha256
+```
+
 ## Konfiguracja i zmiany
 
 Najwazniejsze parametry mozna zmieniac bez grzebania w logice skryptow:

@@ -7,6 +7,28 @@ mkdir -p "$VMS"
 source "$DIR/scripts/detect_env.sh"
 [ "$NORIBEN_ENV" = "LINUX_KVM" ] && ACCEL="-accel kvm" || ACCEL="-accel tcg,thread=multi"
 
+
+file_sha256() {
+    sha256sum "$1" 2>/dev/null | awk '{print $1}'
+}
+
+valid_iso() {
+    local F=$1
+    [ -f "$F" ] || return 1
+    local S=$(stat -c%s "$F" 2>/dev/null || stat -f%z "$F" 2>/dev/null || echo 0)
+    [ "$S" -ge 3221225472 ] || return 1
+    local H="$F.sha256"
+    if [ -f "$H" ]; then
+        [ "$(file_sha256 "$F")" = "$(cat "$H" 2>/dev/null)" ] || return 1
+    fi
+    return 0
+}
+
+store_checksum() {
+    local F=$1
+    file_sha256 "$F" > "$F.sha256"
+}
+
 download_file() {
     local URL=$1 OUT=$2 MIN_SIZE=$3 DESC=$4
     local ATTEMPT=0 MAX=10
