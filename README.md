@@ -4,7 +4,7 @@
 ## Szybki start
 
 ```bash
-unzip Noriben_SOC_v6.8_FINAL.zip && cd Noriben_SOC_v6.8
+unzip Noriben_SOC_v6.8_FINAL_fix3.zip && cd Noriben_SOC_v6.8
 chmod +x deploy.sh scripts/*.sh vms/*.sh
 ./deploy.sh
 ```
@@ -12,8 +12,8 @@ chmod +x deploy.sh scripts/*.sh vms/*.sh
 ```
 UI:        http://localhost:8000
 Grafana:   http://localhost:3000     admin / admin
-Win10 VNC: localhost:5901            instalacja: BEZ hasla / sandbox: noriben
-Win11 VNC: localhost:5902            haslo: noriben
+Win10 VNC: localhost:5901            bez hasla (instalacja) / noriben (sandbox)
+Win11 VNC: localhost:5902            bez hasla (instalacja) / noriben (sandbox)
 API docs:  http://localhost:8000/docs
 ```
 
@@ -30,46 +30,93 @@ API docs:  http://localhost:8000/docs
 
 ---
 
-## Obrazy VM — co skrypt robi automatycznie
+## Obrazy VM — Win10 i Win11
 
-### Win11 — gotowy qcow2 (bez instalacji)
-```
-scripts/win_setup.sh -> pobiera win11_enterprise_eval_notpm.qcow2.zst
-                     -> rozpakowuje do vms/win11.qcow2
-                     -> gotowe do uzycia od razu
-```
+### Co robi win_setup.sh automatycznie
 
-### Win10 — ISO + instalacja przez VNC
-```
-scripts/win_setup.sh -> pobiera Win10 Enterprise Evaluation ISO (~4.5 GB)
-                     -> tworzy dysk vms/win10.qcow2 (60 GB)
-                     -> uruchamia QEMU z VNC (bez hasla) na localhost:5901
-                     -> czekasz na instalacje przez VNC, potem uruchamiasz noriben_setup.ps1
-```
+| System | Akcja |
+|--------|-------|
+| Win10 | Pobiera ISO z Microsoft (10 prób, 2h timeout) → tworzy dysk 60 GB → instalacja przez VNC |
+| Win11 | Pobiera ISO z Microsoft (10 prób, 2h timeout) → tworzy dysk 60 GB → instalacja przez VNC |
 
-### VNC podczas instalacji Win10
+> Uwaga: gotowe qcow2 Win11 nie sa publicznie dostepne — Microsoft ich nie udostepnia.
+> Instalacja jest jednorazowa (~30-45 min przez VNC).
+
+### VNC podczas instalacji (bez hasla)
+
 ```bash
-open vnc://localhost:5901    # macOS (bez hasla)
-vncviewer localhost:5901     # Linux (bez hasla)
+# macOS
+open vnc://localhost:5901    # Win10
+open vnc://localhost:5902    # Win11
+
+# Linux
+vncviewer localhost:5901
+vncviewer localhost:5902
 ```
 
-Po instalacji Win10 — w VM przez VNC:
-```powershell
-Set-ExecutionPolicy Bypass -Scope Process
-C:\shared\noriben_setup.ps1
+---
+
+## Bypass TPM — Win11 (wymagane podczas instalacji)
+
+Gdy instalator Win11 pokazuje blad "This PC doesn't meet the minimum requirements":
+
+1. Nacisnij **Shift+F10** — otworzy sie wiersz polecen
+2. Wpisz kolejno:
+
+```cmd
+reg add HKLM\SYSTEM\Setup\LabConfig /v BypassTPMCheck /t REG_DWORD /d 1 /f
+reg add HKLM\SYSTEM\Setup\LabConfig /v BypassSecureBootCheck /t REG_DWORD /d 1 /f
+reg add HKLM\SYSTEM\Setup\LabConfig /v BypassRAMCheck /t REG_DWORD /d 1 /f
 ```
 
-### Gotowy qcow2 (opcja szybka)
+3. Zamknij cmd (wpisz `exit`)
+4. Kliknij "Refresh" lub cofnij i wznow instalacje
+
+Skrypt `win_setup.sh` wyswietla te komendy automatycznie przed uruchomieniem QEMU.
+
+### Alternatywy — jesli nie chcesz instalowac recznie
+
+**Opcja A — konwersja z VirtualBox / VMware:**
+```bash
+# VirtualBox (.vdi):
+qemu-img convert -f vdi  -O qcow2 win10.vdi  vms/win10.qcow2
+qemu-img convert -f vdi  -O qcow2 win11.vdi  vms/win11.qcow2
+
+# VMware (.vmdk):
+qemu-img convert -f vmdk -O qcow2 win10.vmdk vms/win10.qcow2
+qemu-img convert -f vmdk -O qcow2 win11.vmdk vms/win11.qcow2
+
+# Hyper-V (.vhdx):
+qemu-img convert -f vhdx -O qcow2 win11.vhdx vms/win11.qcow2
+```
+
+**Opcja B — skopiuj gotowy qcow2:**
 ```bash
 cp /path/to/win10_ready.qcow2 vms/win10.qcow2
 cp /path/to/win11_ready.qcow2 vms/win11.qcow2
+# Wymagany rozmiar: > 1 GB (pelny system > 15 GB)
 ```
 
-### Konwersja z VirtualBox / VMware
+**Opcja C — cloudbase.it (obrazy OpenStack, konwersja):**
 ```bash
-qemu-img convert -f vdi  -O qcow2 win10.vdi  vms/win10.qcow2
-qemu-img convert -f vmdk -O qcow2 win11.vmdk vms/win11.qcow2
+# Pobierz Windows Server evaluation z: https://cloudbase.it/windows-cloud-images/
+# (wymagana konwersja z VHDX)
+qemu-img convert -f vhdx -O qcow2 windows_server.vhdx vms/win11.qcow2
 ```
+
+---
+
+## Po instalacji systemu — Noriben setup w VM
+
+Po zainstalowaniu Win10/Win11 przez VNC, uruchom w VM (przez VNC):
+
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process
+C:\shared
+oriben_setup.ps1
+```
+
+Skrypt instaluje Python 3.11 i Noriben (Process Monitor wrapper).
 
 ---
 
@@ -83,24 +130,27 @@ qemu-img convert -f vmdk -O qcow2 win11.vmdk vms/win11.qcow2
 |-------|-----------|
 | `format=qcow2` | Jawny format — bez auto-detekcji |
 | `if=virtio` | Sterownik VirtIO (wydajny) |
-| `index=0` | Dysk jako pierwsze urzadzenie |
-| `media=disk` | Typ: dysk (nie CD-ROM) |
-| `snapshot=on` | Zmiany tylko w RAM — VM czysta po kazdej analizie |
+| `index=0` | Dysk jako pierwsze urzadzenie (nie CD-ROM) |
+| `media=disk` | Typ: dysk |
+| `snapshot=on` | VM czysta po kazdej analizie (zmiany w RAM) |
 
 ---
 
 ## Przechwyt ruchu sieciowego (PCAP)
 
-Kazda VM uzywa `-object filter-dump` — przechwytuje 100% ruchu:
+Kazda VM generuje osobny plik PCAP przez `-object filter-dump`:
 
 ```bash
 -object filter-dump,id=dump10,netdev=net10,file=results/sample_win10.pcap
 ```
 
 Wyniki parsowane przez `scapy` (network_analyzer.py):
-- Zewnetrzne IP (nie RFC1918)
-- DNS queries (domeny podejrzane: .ru .cn .tk .xyz oznaczone HIGH)
-- HTTP GET/POST (port 80)
+
+| Typ IOC | Zrodlo | Severity |
+|---------|--------|----------|
+| Zewnetrzne IP | Pakiety IP | MEDIUM |
+| DNS queries | DNS QNAME | HIGH jesli .ru .cn .tk .xyz .top |
+| HTTP requests | TCP port 80 Raw | HIGH |
 
 Siec izolowana: `restrict=on` — VM nie ma dostepu do hosta ani LAN.
 
@@ -118,7 +168,6 @@ Upload probka
        - seen_on: [win10] / [win11] / [win10, win11]
        - os_diff: co widac TYLKO na win10, TYLKO na win11
        - max_score = max(win10.score, win11.score)
-  -> Wyniki w UI: tabela IOC + panel roznic OS
 ```
 
 ---
@@ -129,12 +178,8 @@ Upload probka
 |----|------|-------|-------|
 | Win10 | 5901 | brak | podczas instalacji ISO |
 | Win10 | 5901 | noriben | sandbox (analiza malware) |
-| Win11 | 5902 | noriben | zawsze (gotowy obraz) |
-
-Haslo ustawiane przez QEMU monitor:
-```bash
-echo "change vnc password noriben" | nc -q1 127.0.0.1 4441
-```
+| Win11 | 5902 | brak | podczas instalacji ISO |
+| Win11 | 5902 | noriben | sandbox (analiza malware) |
 
 ---
 
@@ -143,10 +188,8 @@ echo "change vnc password noriben" | nc -q1 127.0.0.1 4441
 ```bash
 egrep -c '(vmx|svm)' /proc/cpuinfo   # > 0 = OK
 sudo apt install qemu-kvm
-sudo usermod -aG kvm $USER
-sudo chmod 666 /dev/kvm
+sudo usermod -aG kvm $USER && sudo chmod 666 /dev/kvm
 newgrp kvm
-# deploy.sh automatycznie wykrywa i uzywa KVM
 ```
 
 ---
@@ -155,14 +198,15 @@ newgrp kvm
 
 | Problem | Rozwiazanie |
 |---------|-------------|
-| VM nie bootuje, brak dysku | Sprawdz flage `index=0,media=disk` w qemu cmd |
+| Win11 blad TPM | Shift+F10 podczas instalacji → komendy bypass powyzej |
+| VM nie bootuje, brak dysku | Sprawdz flage `index=0,media=disk` |
 | VNC czarny ekran | Uzyj TigerVNC: `vncviewer localhost:5901` |
-| win11.qcow2 nie pobiera | Sprawdz URL archiwum lub skopiuj recznie |
-| Win11 nie startuje (TPM) | Obraz ma wylaczony TPM — jesli problem: dodaj `-device tpm-tis` |
-| PCAP pusty | Sprawdz czy `filter-dump` wspiera twoja wersje QEMU (>= 2.11) |
+| ISO pobieranie zawiesza sie | Skrypt ponowi do 10 razy — czekaj lub pobierz recznie |
+| PCAP pusty | Sprawdz czy QEMU >= 2.11 (`qemu-system-x86_64 --version`) |
 | `docker compose` not found | `sudo apt install docker-compose-plugin` |
 | Port 5901/5902 zajety | `kill $(lsof -t -i:5901)` |
 | Brak wynikow dynamicznych | `docker compose logs celery` |
+| Win11 wolno dziala (TCG) | Mac ARM/Intel bez KVM — normalny czas analizy 15-20 min |
 
 ---
 *Noriben SOC v6.8 — Cr3pT — 2026*
