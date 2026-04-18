@@ -49,10 +49,11 @@ install_vm() {
     qemu-img create -f qcow2 "$QCOW2" 60G
     echo "[$NAME] Dysk OK: $(du -sh $QCOW2 | cut -f1)"
 
-    if ss -tlnp 2>/dev/null | grep -q ":$VNC_PORT "; then
-        VNC_DISP=$((VNC_DISP + 10)); VNC_PORT=$((5900 + VNC_DISP))
-        echo "[$NAME] Port zajety — uzywam VNC :$VNC_DISP (port $VNC_PORT)"
-    fi
+    while ss -tln 2>/dev/null | awk '{print $4}' | grep -q ":$VNC_PORT$"; do
+        VNC_DISP=$((VNC_DISP + 1))
+        VNC_PORT=$((5900 + VNC_DISP))
+    done
+    echo "[$NAME] VNC port: $VNC_PORT (display :$VNC_DISP)"
 
     echo ""
     echo "======================================================"

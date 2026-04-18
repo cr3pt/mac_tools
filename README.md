@@ -136,6 +136,73 @@ Skrypt instaluje Python 3.11 i Noriben (Process Monitor wrapper).
 
 ---
 
+
+## QEMU — porty i logowanie
+
+Skrypt automatycznie wybiera wolny port dla monitora QEMU, zamiast trzymac sie stalego 4440.
+Dla kazdej uruchomionej VM wypisuje aktualny port monitora, zeby bylo od razu widac gdzie sie podlaczyc.
+
+```bash
+# Przyklad komunikatu:
+# [win10] QEMU uruchomiony — monitor port: 4442
+```
+
+Jeśli port 5901/5902 albo monitor sa zajete, skrypt przesuwa je na pierwszy wolny numer.
+
+
+
+## Konfiguracja i zmiany
+
+Najwazniejsze parametry mozna zmieniac bez grzebania w logice skryptow:
+
+| Zmienna / element | Domyslnie | Co zmienia |
+|-------------------|-----------|------------|
+| `VNC` display Win10 | `:1` | Port VNC dla Win10 |
+| `VNC` display Win11 | `:2` | Port VNC dla Win11 |
+| `Monitor` Win10 | `4440` | Port monitora QEMU |
+| `Monitor` Win11 | `4441` | Port monitora QEMU |
+| `RAM` VM | `4096` | Przydzial pamieci |
+| `Dysk` | `60G` | Rozmiar qcow2 |
+
+Zmiany konfiguracyjne i nowe opcje pracy warto dopisywac do README razem z opisem efektu, zeby kolejna wersja byla zrozumiala bez czytania skryptu.
+
+## Zwolnienie portów recznie
+
+Jesli trzeba zwolnic porty po poprzednim uruchomieniu:
+
+```bash
+# VNC
+lsof -i :5901
+lsof -i :5902
+kill -9 $(lsof -t -i :5901)
+kill -9 $(lsof -t -i :5902)
+
+# Monitor QEMU
+lsof -i :4440
+lsof -i :4441
+kill -9 $(lsof -t -i :4440)
+kill -9 $(lsof -t -i :4441)
+```
+
+W praktyce wystarczy zamknac stary proces QEMU lub uruchomic skrypt ponownie — wybierze pierwszy wolny port.
+
+## Porty VNC i monitor
+
+| Element | Win10 | Win11 | Co robi skrypt gdy zajete |
+|--------|-------|-------|---------------------------|
+| VNC display | `:1` | `:2` | Przesuwa na kolejny wolny display `:3`, `:4`, ... |
+| VNC port | `5901` | `5902` | Automatycznie zmienia na kolejny port `5903`, `5904`, ... |
+| Monitor QEMU | `4440` | `4441` | Przesuwa na pierwszy wolny port monitora |
+
+Przy starcie skrypt wypisuje realnie wybrany port VNC oraz port monitora, zebys mogl od razu polaczyc sie bez zgadywania.
+
+### Przyklad
+
+```bash
+[win10] VNC port: 5912 (display :12)
+[win10] QEMU uruchomiony — monitor port: 4442
+```
+
 ## Przechwyt ruchu sieciowego (PCAP)
 
 Kazda VM generuje osobny plik PCAP przez `-object filter-dump`:
