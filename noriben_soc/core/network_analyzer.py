@@ -210,6 +210,117 @@ def analyze_pcap(pcap_path: Path) -> list:
                             iocs.append({'type': 'IRC', 'value': cmd, 'severity': 'HIGH'})
                 except Exception:
                     pass
+
+            # HTTP User-Agent and Referer (port 80)
+            if TCP in pkt and pkt[TCP].dport == 80 and Raw in pkt:
+                try:
+                    payload = pkt[Raw].load.decode('utf-8', errors='ignore')
+                    lines = payload.split('\n')
+                    for line in lines:
+                        if line.lower().startswith('user-agent:'):
+                            ua = line.split(':', 1)[1].strip()
+                            if ua not in seen_urls:
+                                seen_urls.add(ua)
+                                iocs.append({'type': 'HTTP_UA', 'value': ua, 'severity': 'LOW'})
+                        elif line.lower().startswith('referer:'):
+                            ref = line.split(':', 1)[1].strip()
+                            if ref not in seen_urls:
+                                seen_urls.add(ref)
+                                iocs.append({'type': 'HTTP_REF', 'value': ref, 'severity': 'MEDIUM'})
+                except Exception:
+                    pass
+
+            # TLS Certificate (port 443)
+            if TCP in pkt and pkt[TCP].dport == 443 and TLS in pkt:
+                try:
+                    tls = pkt[TLS]
+                    if hasattr(tls, 'msg') and tls.msg:
+                        for msg in tls.msg:
+                            if hasattr(msg, 'certificates') and msg.certificates:
+                                for cert in msg.certificates:
+                                    if hasattr(cert, 'tbsCertificate') and cert.tbsCertificate:
+                                        subj = cert.tbsCertificate.subject
+                                        if subj and str(subj) not in seen_sni:
+                                            seen_sni.add(str(subj))
+                                            iocs.append({'type': 'TLS_CERT', 'value': str(subj), 'severity': 'MEDIUM'})
+                except Exception:
+                    pass
+
+            # MySQL (port 3306)
+            if TCP in pkt and pkt[TCP].dport == 3306 and Raw in pkt:
+                try:
+                    payload = pkt[Raw].load.decode('utf-8', errors='ignore').strip()
+                    if payload.startswith('\x00\x00\x00'):  # MySQL packet
+                        query = payload[4:]  # skip length
+                        if 'SELECT' in query or 'INSERT' in query or 'UPDATE' in query:
+                            if query not in seen_smtp:  # reuse
+                                seen_smtp.add(query)
+                                iocs.append({'type': 'MYSQL', 'value': query[:100], 'severity': 'HIGH'})
+                except Exception:
+                    pass
+
+            # PostgreSQL (port 5432)
+            if TCP in pkt and pkt[TCP].dport == 5432 and Raw in pkt:
+                try:
+                    payload = pkt[Raw].load.decode('utf-8', errors='ignore').strip()
+                    if 'SELECT' in payload or 'INSERT' in payload or 'UPDATE' in payload:
+                        query = payload.split('\x00')[0]
+                        if query not in seen_smtp:  # reuse
+                            seen_smtp.add(query)
+                            iocs.append({'type': 'PGSQL', 'value': query[:100], 'severity': 'HIGH'})
+                except Exception:
+                    pass
+
+            # LDAP (port 389)
+            if TCP in pkt and pkt[TCP].dport == 389 and Raw in pkt:
+                try:
+                    payload = pkt[Raw].load
+                    if len(payload) > 2 and payload[0] == 0x30:  # LDAP BER
+                        op = payload[1]
+                        if op == 0x60:  # bindRequest
+                            iocs.append({'type': 'LDAP', 'value': 'LDAP Bind Attempt', 'severity': 'MEDIUM'})
+                except Exception:
+                    pass
+
+            # Kerberos (port 88, UDP/TCP)
+            if (TCP in pkt and pkt[TCP].dport == 88) or (UDP in pkt and pkt[UDP].dport == 88):
+                try:
+                    payload = pkt[Raw].load if Raw in pkt else b''
+                    if payload.startswith(b'\x6a'):  # AS-REQ
+                        realm = payload[10:20].decode('utf-8', errors='ignore')  # approximate
+                        if realm and realm not in seen_dhcp:  # reuse
+                            seen_dhcp.add(realm)
+                            iocs.append({'type': 'KERBEROS', 'value': realm, 'severity': 'MEDIUM'})
+                except Exception:
+                    pass
+
+            # SIP (port 5060)
+            if UDP in pkt and pkt[UDP].dport == 5060 and Raw in pkt:
+                try:
+                    payload = pkt[Raw].load.decode('utf-8', errors='ignore').strip()
+                    if payload.startswith(('INVITE ', 'REGISTER ', 'BYE ')):
+                        method = payload.split()[0]
+                        if method not in seen_smtp:  # reuse
+                            seen_smtp.add(method)
+                            iocs.append({'type': 'SIP', 'value': method, 'severity': 'MEDIUM'})
+                except Exception:
+                    pass
+
+            # ICMP types
+            if ICMP in pkt:
+                icmp_type = pkt[ICMP].type
+                if icmp_type not in seen_ntp:  # reuse
+                    seen_ntp.add(str(icmp_type))
+                    iocs.append({'type': 'ICMP', 'value': f'ICMP Type {icmp_type}', 'severity': 'LOW'})
+
+            # Anomalies: Large payloads, Rare ports
+            if Raw in pkt:
+                payload_len = len(pkt[Raw].load)
+                if payload_len > 10000:  # arbitrary large
+                    iocs.append({'type': 'ANOMALY', 'value': f'Large payload {payload_len} bytes', 'severity': 'MEDIUM'})
+                port = pkt[TCP].dport if TCP in pkt else (pkt[UDP].dport if UDP in pkt else 0)
+                if port > 1024 and port not in [80,443,21,25,22,110,143,23,161,6667,3389,445,123,67,5060,3306,5432,389,88]:
+                    iocs.append({'type': 'RARE_PORT', 'value': f'Port {port}', 'severity': 'LOW'})
     except Exception as e:
         iocs.append({'type': 'ERROR', 'value': str(e), 'severity': 'LOW'})
     return iocs
