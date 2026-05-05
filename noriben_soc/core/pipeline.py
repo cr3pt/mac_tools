@@ -1,4 +1,10 @@
-import asyncio, hashlib, subprocess, requests, logging
+import asyncio, hashlib, subprocess, logging
+# Optional import for HTTP requests; fallback if not installed
+try:
+    import requests
+except ImportError:  # pragma: no cover
+    requests = None
+
 from pathlib import Path
 from .yara_engine      import run_yara_scan
 from .sigma_engine     import run_sigma_scan

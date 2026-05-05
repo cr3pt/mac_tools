@@ -7,6 +7,16 @@ echo "  Noriben SOC v6.8 — Auto Deploy"
 echo "============================================"
 source scripts/detect_env.sh
 
+# Install system build dependencies for Python extensions
+sudo apt-get update -qq && sudo apt-get install -y libpq-dev python3-dev build-essential curl
+# Install Rust toolchain (required for pydantic-core)
+if ! command -v cargo >/dev/null 2>&1; then
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+  source "$HOME/.cargo/env"
+fi
+# Install Python dependencies (including native wheels)
+python3 -m venv venv && source venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt
+
 [ "$NORIBEN_ENV" = "LINUX_NO_KVM" ] && {
     sudo modprobe kvm_intel 2>/dev/null || sudo modprobe kvm_amd 2>/dev/null || true
     sudo usermod -aG kvm $USER 2>/dev/null || true
