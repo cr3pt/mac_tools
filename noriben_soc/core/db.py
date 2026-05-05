@@ -1,5 +1,10 @@
-import asyncpg, json, os
+import json, os
 from datetime import datetime
+try:
+    import asyncpg
+except ImportError:
+    asyncpg = None
+
 DSN = os.getenv('DATABASE_URL','postgresql://noriben:noriben123@localhost/noriben')
 async def save_result(result: dict):
     conn = await asyncpg.connect(DSN)

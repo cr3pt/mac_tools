@@ -232,6 +232,20 @@ Wyniki parsowane przez `scapy` (network_analyzer.py):
 | Zewnetrzne IP | Pakiety IP | MEDIUM |
 | DNS queries | DNS QNAME | HIGH jesli .ru .cn .tk .xyz .top |
 | HTTP requests | TCP port 80 Raw | HIGH |
+| HTTP responses | TCP port 80 Raw | MEDIUM |
+| HTTPS SNI | TLS Client Hello port 443 | HIGH jesli podejrzana domena |
+| FTP commands | TCP port 21 Raw | HIGH |
+| SMTP addresses | TCP port 25 Raw | HIGH |
+| POP3 commands | TCP port 110 Raw | HIGH |
+| IMAP commands | TCP port 143 Raw | HIGH |
+| SSH versions | TCP port 22 Raw | MEDIUM |
+| Telnet commands | TCP port 23 Raw | HIGH |
+| RDP connections | TCP port 3389 Raw | MEDIUM |
+| SMB connections | TCP port 445 Raw | MEDIUM |
+| NTP servers | UDP port 123 NTP | LOW |
+| DHCP domains | UDP ports 67/68 DHCP | MEDIUM |
+| SNMP community | UDP port 161 Raw | HIGH |
+| IRC commands | TCP port 6667 Raw | HIGH |
 
 Siec izolowana: `restrict=on` — VM nie ma dostepu do hosta ani LAN.
 
@@ -242,7 +256,7 @@ Siec izolowana: `restrict=on` — VM nie ma dostepu do hosta ani LAN.
 ```
 Upload probka
   -> YARA + SIGMA (< 1s)
-  -> score >= 70 LUB .exe/.dll/.ps1
+  -> score >= 70 LUB .exe/.dll/.ps1/.evtx
   -> asyncio.gather(win10, win11) — rownolegla analiza
   -> results_merger.py:
        - Deduplikacja IOC po value
