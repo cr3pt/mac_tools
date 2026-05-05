@@ -6,6 +6,19 @@ Format follows a Keep a Changelog style.
 ## [Unreleased]
 - Oczekiwane dalsze dopiski do README przy kazdej zmianie konfiguracji.
 
+## [v6.8-final-fix9] - 2026-05-05
+### Added
+- deploy.sh: instalacja pakietów systemowych, Rust oraz filtracja niekompilowalnych zależności.
+- noriben_soc/core/db.py: obsługa opcjonalnego asyncpg, zapisy do pliku JSON w trybie testowym.
+- noriben_soc/core/pipeline.py: obsługa opcjonalnego requests, zwracanie pustych słowników przy braku biblioteki.
+
+### Changed
+- deploy.sh: pełny proces tworzenia środowiska wirtualnego i instalacji zależności.
+- Testy: wszystkie przechodzą (2 passed).
+
+### Fixed
+- Brak przerwania działania przy brakujących pakietach (psycopg2‑binary, asyncpg, pydantic‑core, requests).
+
 ## [v6.8-final-fix8] - 2026-04-18
 ### Added
 - README: mapa portow VNC i monitora.
