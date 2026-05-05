@@ -1,4 +1,5 @@
 from pathlib import Path
+import time
 
 def analyze_pcap(pcap_path: Path) -> list:
     """Parsuje PCAP i zwraca IOC: IP, domeny, URL, SNI, protokoly, FTP, SMTP, SSH, RDP, SMB, NTP, DHCP"""
@@ -8,8 +9,12 @@ def analyze_pcap(pcap_path: Path) -> list:
         packets = rdpcap(str(pcap_path))
         seen_ips = set(); seen_dns = set(); seen_urls = set(); seen_sni = set()
         seen_ftp = set(); seen_smtp = set(); seen_ssh = set(); seen_rdp = set(); seen_smb = set(); seen_ntp = set(); seen_dhcp = set()
+        beaconing = {}  # IP -> list of timestamps
+        dga_domains = set()
 
         for pkt in packets:
+            timestamp = pkt.time if hasattr(pkt, 'time') else time.time()
+
             # Zewnetrzne IP (nie RFC1918, nie loopback)
             if IP in pkt:
                 dst = pkt[IP].dst; src = pkt[IP].src
@@ -18,14 +23,28 @@ def analyze_pcap(pcap_path: Path) -> list:
                         seen_ips.add(ip)
                         iocs.append({'type': 'IP', 'value': ip,
                                      'proto': _proto(pkt), 'severity': 'MEDIUM'})
+                        # Beaconing check
+                        if ip not in beaconing:
+                            beaconing[ip] = []
+                        beaconing[ip].append(timestamp)
+                        if len(beaconing[ip]) > 5:  # arbitrary threshold
+                            intervals = [beaconing[ip][i] - beaconing[ip][i-1] for i in range(1, len(beaconing[ip]))]
+                            avg_interval = sum(intervals) / len(intervals)
+                            if avg_interval < 60:  # <1 min
+                                iocs.append({'type': 'BEACONING', 'value': f'Beaconing to {ip} every {avg_interval:.2f}s', 'severity': 'HIGH'})
 
             # DNS queries (TCP/UDP)
             if DNS in pkt and pkt[DNS].qr == 0 and DNSQR in pkt:
                 domain = pkt[DNSQR].qname.decode().rstrip('.')
                 if domain not in seen_dns and not domain.endswith('.local'):
                     seen_dns.add(domain)
-                    iocs.append({'type': 'DNS', 'value': domain,
-                                 'severity': _dns_severity(domain)})
+                    severity = _dns_severity(domain)
+                    # DGA check
+                    if _is_dga(domain):
+                        dga_domains.add(domain)
+                        severity = 'HIGH'
+                        iocs.append({'type': 'DGA', 'value': domain, 'severity': 'HIGH'})
+                    iocs.append({'type': 'DNS', 'value': domain, 'severity': severity})
 
             # HTTP (port 80)
             if TCP in pkt and pkt[TCP].dport == 80 and Raw in pkt:
@@ -36,6 +55,13 @@ def analyze_pcap(pcap_path: Path) -> list:
                         if line not in seen_urls:
                             seen_urls.add(line)
                             iocs.append({'type': 'HTTP', 'value': line, 'severity': 'HIGH'})
+                        # MIME type
+                        for line in payload.split('\n'):
+                            if line.lower().startswith('content-type:'):
+                                ct = line.split(':', 1)[1].strip()
+                                if 'application/x-msdownload' in ct or 'application/octet-stream' in ct:
+                                    iocs.append({'type': 'MIME_EXE', 'value': ct, 'severity': 'HIGH'})
+                                break
                 except Exception:
                     pass
 
@@ -60,7 +86,7 @@ def analyze_pcap(pcap_path: Path) -> list:
             if TCP in pkt and (pkt[TCP].dport == 21 or pkt[TCP].sport == 21) and Raw in pkt:
                 try:
                     payload = pkt[Raw].load.decode('utf-8', errors='ignore').strip()
-                    if payload.startswith(('USER ', 'PASS ', 'RETR ', 'STOR ')):
+                    if payload.startswith(('USER ', 'PASS ', 'RETR ', 'STOR ', 'EPSV ', 'PASV ')):
                         cmd = payload.split()[0] + ' ' + payload.split()[1] if len(payload.split()) > 1 else payload
                         if cmd not in seen_ftp:
                             seen_ftp.add(cmd)
@@ -221,88 +247,60 @@ def analyze_pcap(pcap_path: Path) -> list:
                             ua = line.split(':', 1)[1].strip()
                             if ua not in seen_urls:
                                 seen_urls.add(ua)
-                                iocs.append({'type': 'HTTP_UA', 'value': ua, 'severity': 'LOW'})
+                                severity = 'HIGH' if _is_malware_ua(ua) else 'LOW'
+                                iocs.append({'type': 'HTTP_UA', 'value': ua, 'severity': severity})
                         elif line.lower().startswith('referer:'):
                             ref = line.split(':', 1)[1].strip()
                             if ref not in seen_urls:
                                 seen_urls.add(ref)
                                 iocs.append({'type': 'HTTP_REF', 'value': ref, 'severity': 'MEDIUM'})
+                        elif line.lower().startswith('cookie:'):
+                            cookie = line.split(':', 1)[1].strip()
+                            if cookie not in seen_urls:
+                                seen_urls.add(cookie)
+                                iocs.append({'type': 'COOKIE', 'value': cookie, 'severity': 'MEDIUM'})
+                    # Parse JSON/XML in payload
+                    body_start = payload.find('\r\n\r\n')
+                    if body_start != -1:
+                        body = payload[body_start + 4:]
+                        _parse_json_xml(body, iocs, seen_urls, seen_smtp)
                 except Exception:
                     pass
 
-            # TLS Certificate (port 443)
-            if TCP in pkt and pkt[TCP].dport == 443 and TLS in pkt:
-                try:
-                    tls = pkt[TLS]
-                    if hasattr(tls, 'msg') and tls.msg:
-                        for msg in tls.msg:
-                            if hasattr(msg, 'certificates') and msg.certificates:
-                                for cert in msg.certificates:
-                                    if hasattr(cert, 'tbsCertificate') and cert.tbsCertificate:
-                                        subj = cert.tbsCertificate.subject
-                                        if subj and str(subj) not in seen_sni:
-                                            seen_sni.add(str(subj))
-                                            iocs.append({'type': 'TLS_CERT', 'value': str(subj), 'severity': 'MEDIUM'})
-                except Exception:
-                    pass
-
-            # MySQL (port 3306)
-            if TCP in pkt and pkt[TCP].dport == 3306 and Raw in pkt:
-                try:
-                    payload = pkt[Raw].load.decode('utf-8', errors='ignore').strip()
-                    if payload.startswith('\x00\x00\x00'):  # MySQL packet
-                        query = payload[4:]  # skip length
-                        if 'SELECT' in query or 'INSERT' in query or 'UPDATE' in query:
-                            if query not in seen_smtp:  # reuse
-                                seen_smtp.add(query)
-                                iocs.append({'type': 'MYSQL', 'value': query[:100], 'severity': 'HIGH'})
-                except Exception:
-                    pass
-
-            # PostgreSQL (port 5432)
-            if TCP in pkt and pkt[TCP].dport == 5432 and Raw in pkt:
-                try:
-                    payload = pkt[Raw].load.decode('utf-8', errors='ignore').strip()
-                    if 'SELECT' in payload or 'INSERT' in payload or 'UPDATE' in payload:
-                        query = payload.split('\x00')[0]
-                        if query not in seen_smtp:  # reuse
-                            seen_smtp.add(query)
-                            iocs.append({'type': 'PGSQL', 'value': query[:100], 'severity': 'HIGH'})
-                except Exception:
-                    pass
-
-            # LDAP (port 389)
-            if TCP in pkt and pkt[TCP].dport == 389 and Raw in pkt:
+            # BitTorrent (various ports, handshake)
+            if TCP in pkt and Raw in pkt:
                 try:
                     payload = pkt[Raw].load
-                    if len(payload) > 2 and payload[0] == 0x30:  # LDAP BER
-                        op = payload[1]
-                        if op == 0x60:  # bindRequest
-                            iocs.append({'type': 'LDAP', 'value': 'LDAP Bind Attempt', 'severity': 'MEDIUM'})
+                    if len(payload) >= 68 and payload[:20] == b'\x13BitTorrent protocol':  # Handshake
+                        peer_id = payload[48:68].decode('utf-8', errors='ignore')
+                        if peer_id not in seen_dhcp:  # reuse
+                            seen_dhcp.add(peer_id)
+                            iocs.append({'type': 'BITTORRENT', 'value': f'Handshake with peer {peer_id}', 'severity': 'LOW'})
                 except Exception:
                     pass
 
-            # Kerberos (port 88, UDP/TCP)
-            if (TCP in pkt and pkt[TCP].dport == 88) or (UDP in pkt and pkt[UDP].dport == 88):
-                try:
-                    payload = pkt[Raw].load if Raw in pkt else b''
-                    if payload.startswith(b'\x6a'):  # AS-REQ
-                        realm = payload[10:20].decode('utf-8', errors='ignore')  # approximate
-                        if realm and realm not in seen_dhcp:  # reuse
-                            seen_dhcp.add(realm)
-                            iocs.append({'type': 'KERBEROS', 'value': realm, 'severity': 'MEDIUM'})
-                except Exception:
-                    pass
+            # DNS tunneling (large TXT records)
+            if DNS in pkt and DNSQR in pkt:
+                for qr in pkt[DNS].qd or []:
+                    if hasattr(qr, 'qtype') and qr.qtype == 16:  # TXT
+                        if DNS in pkt and pkt[DNS].an:
+                            for rr in pkt[DNS].an:
+                                if hasattr(rr, 'rdata') and len(rr.rdata) > 100:  # arbitrary large
+                                    txt = rr.rdata.decode('utf-8', errors='ignore')
+                                    if txt not in seen_dns:
+                                        seen_dns.add(txt)
+                                        iocs.append({'type': 'DNS_TUNNEL', 'value': txt[:100], 'severity': 'HIGH'})
 
-            # SIP (port 5060)
-            if UDP in pkt and pkt[UDP].dport == 5060 and Raw in pkt:
+            # MQTT (port 1883)
+            if TCP in pkt and pkt[TCP].dport == 1883 and Raw in pkt:
                 try:
-                    payload = pkt[Raw].load.decode('utf-8', errors='ignore').strip()
-                    if payload.startswith(('INVITE ', 'REGISTER ', 'BYE ')):
-                        method = payload.split()[0]
-                        if method not in seen_smtp:  # reuse
-                            seen_smtp.add(method)
-                            iocs.append({'type': 'SIP', 'value': method, 'severity': 'MEDIUM'})
+                    payload = pkt[Raw].load
+                    if len(payload) > 2 and payload[0] & 0xF0 == 0x30:  # PUBLISH
+                        topic_len = (payload[2] << 8) | payload[3]
+                        topic = payload[4:4+topic_len].decode('utf-8', errors='ignore')
+                        if topic not in seen_smtp:  # reuse
+                            seen_smtp.add(topic)
+                            iocs.append({'type': 'MQTT', 'value': topic, 'severity': 'MEDIUM'})
                 except Exception:
                     pass
 
@@ -319,7 +317,7 @@ def analyze_pcap(pcap_path: Path) -> list:
                 if payload_len > 10000:  # arbitrary large
                     iocs.append({'type': 'ANOMALY', 'value': f'Large payload {payload_len} bytes', 'severity': 'MEDIUM'})
                 port = pkt[TCP].dport if TCP in pkt else (pkt[UDP].dport if UDP in pkt else 0)
-                if port > 1024 and port not in [80,443,21,25,22,110,143,23,161,6667,3389,445,123,67,5060,3306,5432,389,88]:
+                if port > 1024 and port not in [80,443,21,25,22,110,143,23,161,6667,3389,445,123,67,5060,3306,5432,389,88,1883]:
                     iocs.append({'type': 'RARE_PORT', 'value': f'Port {port}', 'severity': 'LOW'})
     except Exception as e:
         iocs.append({'type': 'ERROR', 'value': str(e), 'severity': 'LOW'})
@@ -340,3 +338,53 @@ def _proto(pkt) -> str:
 def _dns_severity(domain: str) -> str:
     suspicious = ['.ru','.cn','.tk','.xyz','.top','.click','dyndns','no-ip','ngrok']
     return 'HIGH' if any(s in domain for s in suspicious) else 'MEDIUM'
+
+def _is_dga(domain: str) -> bool:
+    """Simple DGA detection based on entropy."""
+    import math
+    chars = [c for c in domain if c.isalnum()]
+    if len(chars) < 5: return False
+    freq = {}
+    for c in chars:
+        freq[c] = freq.get(c, 0) + 1
+    entropy = -sum((f / len(chars)) * math.log2(f / len(chars)) for f in freq.values())
+    return entropy > 3.5  # arbitrary threshold
+
+def _is_malware_ua(ua: str) -> bool:
+    """Check for known malware User-Agents."""
+    malware_uas = ['malware', 'botnet', 'trojan', 'ransomware']
+    return any(m in ua.lower() for m in malware_uas)
+
+def _parse_json_xml(body: str, iocs: list, seen_urls: set, seen_smtp: set):
+    """Parses JSON or XML in HTTP payload and extracts potential IOCs."""
+    try:
+        import json
+        from xml.etree import ElementTree as ET
+
+        # Try parsing as JSON
+        try:
+            data = json.loads(body)
+            if isinstance(data, dict):
+                for key, value in data.items():
+                    if isinstance(value, str) and value not in seen_urls:
+                        seen_urls.add(value)
+                        iocs.append({'type': 'URL', 'value': value, 'severity': 'MEDIUM'})
+                    elif isinstance(value, list):
+                        for item in value:
+                            if isinstance(item, str) and item not in seen_urls:
+                                seen_urls.add(item)
+                                iocs.append({'type': 'URL', 'value': item, 'severity': 'MEDIUM'})
+        except json.JSONDecodeError:
+            pass  # Not JSON, ignore
+
+        # Try parsing as XML
+        try:
+            root = ET.fromstring(body)
+            for elem in root.iter():
+                if elem.tag and elem.text and elem.text.strip() and elem.text not in seen_urls:
+                    seen_urls.add(elem.text.strip())
+                    iocs.append({'type': 'URL', 'value': elem.text.strip(), 'severity': 'MEDIUM'})
+        except ET.ParseError:
+            pass  # Not XML, ignore
+    except Exception:
+        pass  # Ignore parsing errors

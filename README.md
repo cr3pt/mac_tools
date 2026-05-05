@@ -27,6 +27,17 @@ API docs:  http://localhost:8000/docs
 | QEMU | brew install qemu | apt install qemu-system-x86 qemu-utils |
 | RAM | 10 GB+ | 10 GB+ |
 | Dysk | 150 GB+ | 150 GB+ |
+| ClamAV | brew install clamav | apt install clamav |
+| Oletools | pip install oletools | pip install oletools |
+| PyPDF2 | pip install PyPDF2 | pip install PyPDF2 |
+| Requests | pip install requests | pip install requests |
+
+## Konfiguracja API
+
+Aby korzystać z VirusTotal i OTX, ustaw klucze API w kodzie:
+
+- VirusTotal: Zastąp 'YOUR_VIRUSTOTAL_API_KEY' w `_check_virustotal`
+- OTX: Zastąp 'YOUR_OTX_API_KEY' w `_check_otx`
 
 ---
 
@@ -231,10 +242,13 @@ Wyniki parsowane przez `scapy` (network_analyzer.py):
 |---------|--------|----------|
 | Zewnetrzne IP | Pakiety IP | MEDIUM |
 | DNS queries | DNS QNAME | HIGH jesli .ru .cn .tk .xyz .top |
+| DGA domains | DNS QNAME entropy | HIGH |
 | HTTP requests | TCP port 80 Raw | HIGH |
 | HTTP responses | TCP port 80 Raw | MEDIUM |
-| HTTP User-Agent | TCP port 80 Raw | LOW |
+| HTTP User-Agent | TCP port 80 Raw | HIGH jesli malware |
 | HTTP Referer | TCP port 80 Raw | MEDIUM |
+| HTTP Cookies | TCP port 80 Raw | MEDIUM |
+| MIME exe | TCP port 80 Raw | HIGH |
 | HTTPS SNI | TLS Client Hello port 443 | HIGH jesli podejrzana domena |
 | TLS Certificate | TLS Certificate port 443 | MEDIUM |
 | FTP commands | TCP port 21 Raw | HIGH |
@@ -254,6 +268,11 @@ Wyniki parsowane przez `scapy` (network_analyzer.py):
 | LDAP binds | TCP port 389 Raw | MEDIUM |
 | Kerberos realms | UDP/TCP port 88 Raw | MEDIUM |
 | SIP methods | UDP port 5060 Raw | MEDIUM |
+| BitTorrent handshake | TCP Raw | LOW |
+| JSON/XML URLs | HTTP payload | MEDIUM |
+| DNS tunneling | DNS TXT large | HIGH |
+| MQTT topics | TCP port 1883 Raw | MEDIUM |
+| Beaconing | IP timestamps | HIGH |
 | ICMP types | ICMP | LOW |
 | Anomalies | Duże payloady | MEDIUM |
 | Rare ports | Nietypowe porty | LOW |
