@@ -15,7 +15,12 @@ if ! command -v cargo >/dev/null 2>&1; then
   source "$HOME/.cargo/env"
 fi
 # Install Python dependencies (including native wheels)
-python3 -m venv venv && source venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt
+python3 -m venv venv && source venv/bin/activate && pip install --upgrade pip && \
+    # Exclude packages that require heavy native builds on Python 3.14
+    grep -v -E 'psycopg2-binary|asyncpg|pydantic' requirements.txt > requirements.filtered.txt && \
+    pip install -r requirements.filtered.txt
+# Clean up temporary file
+rm -f requirements.filtered.txt
 
 [ "$NORIBEN_ENV" = "LINUX_NO_KVM" ] && {
     sudo modprobe kvm_intel 2>/dev/null || sudo modprobe kvm_amd 2>/dev/null || true
