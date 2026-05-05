@@ -1,0 +1,69 @@
+version: "3.8"
+services:
+  postgres:
+    image: postgres:15
+    platform: linux/amd64
+    environment:
+      POSTGRES_DB: noriben
+      POSTGRES_USER: noriben
+      POSTGRES_PASSWORD: noriben123
+    ports:
+      - "5432:5432"
+    volumes:
+      - noriben_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD","pg_isready","-U","noriben"]
+      interval: "5s"
+      retries: 5
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platform: linux/amd64
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - ./vms:/shared
+    environment:
+      DATABASE_URL: postgresql://noriben:noriben123@postgres/noriben
+      CELERY_BROKER: redis://redis:6379/0
+      NORIBEN_ENV: LINUX_KVM
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platform: linux/amd64
+    command: celery -A noriben_soc.tasks worker --loglevel=info --concurrency=4
+    volumes:
+      - .:/app
+      - ./vms:/shared
+    environment:
+      DATABASE_URL: postgresql://noriben:noriben123@postgres/noriben
+      CELERY_BROKER: redis://redis:6379/0
+      QEMU_ACCEL: kvm
+      NORIBEN_ENV: LINUX_KVM
+    depends_on:
+      - redis
+      - postgres
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - noriben_grafana:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+volumes:
+  noriben_pg: {}
+  noriben_grafana: {}
