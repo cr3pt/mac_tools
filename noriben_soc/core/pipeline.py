@@ -13,6 +13,8 @@ from .qemu_engine      import run_dynamic_analysis
 from .results_merger   import merge_dual_results
 from .db               import save_result
 from .linux_analyzer   import run_linux_analysis
+from .cache import get_cached, set_cached
+from noriben_soc.scanners.base import load_plugins
 
 # Logging setup
 logging.basicConfig(filename='noriben.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -48,6 +50,21 @@ async def analyze_sample(sample_path: Path) -> dict:
         sum(10 for h in sigma_hits if h.get('severity') == 'MEDIUM')+
         (50 if vt_result.get('positives', 0) > 0 else 0) +
         (30 if clam_result.get('infected') else 0), 100)
+
+    # Run optional scanner plugins and cache their results
+    plugin_results = []
+    for plugin in load_plugins():
+        cache_key = f"{plugin.__class__.__name__}:{sample_path}"
+        cached = get_cached(plugin.__class__.__name__, str(sample_path))
+        if cached is not None:
+            plugin_results.append(cached)
+            continue
+        try:
+            result = plugin.scan(str(sample_path))
+            set_cached(plugin.__class__.__name__, str(sample_path), result)
+            plugin_results.append(result)
+        except Exception as e:
+            logging.error(f"Plugin {plugin.__class__.__name__} failed: {e}")
 
     dynamic_win10 = None
     dynamic_win11 = None
