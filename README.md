@@ -233,7 +233,10 @@ Wyniki parsowane przez `scapy` (network_analyzer.py):
 | DNS queries | DNS QNAME | HIGH jesli .ru .cn .tk .xyz .top |
 | HTTP requests | TCP port 80 Raw | HIGH |
 | HTTP responses | TCP port 80 Raw | MEDIUM |
+| HTTP User-Agent | TCP port 80 Raw | LOW |
+| HTTP Referer | TCP port 80 Raw | MEDIUM |
 | HTTPS SNI | TLS Client Hello port 443 | HIGH jesli podejrzana domena |
+| TLS Certificate | TLS Certificate port 443 | MEDIUM |
 | FTP commands | TCP port 21 Raw | HIGH |
 | SMTP addresses | TCP port 25 Raw | HIGH |
 | POP3 commands | TCP port 110 Raw | HIGH |
@@ -246,6 +249,14 @@ Wyniki parsowane przez `scapy` (network_analyzer.py):
 | DHCP domains | UDP ports 67/68 DHCP | MEDIUM |
 | SNMP community | UDP port 161 Raw | HIGH |
 | IRC commands | TCP port 6667 Raw | HIGH |
+| MySQL queries | TCP port 3306 Raw | HIGH |
+| PostgreSQL queries | TCP port 5432 Raw | HIGH |
+| LDAP binds | TCP port 389 Raw | MEDIUM |
+| Kerberos realms | UDP/TCP port 88 Raw | MEDIUM |
+| SIP methods | UDP port 5060 Raw | MEDIUM |
+| ICMP types | ICMP | LOW |
+| Anomalies | Duże payloady | MEDIUM |
+| Rare ports | Nietypowe porty | LOW |
 
 Siec izolowana: `restrict=on` — VM nie ma dostepu do hosta ani LAN.
 
