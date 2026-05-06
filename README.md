@@ -351,8 +351,15 @@ The script will:
 - Create a virtualenv at `.venv`, install runtime and dev Python dependencies (requirements.txt, requirements-dev.txt).
 - Create a default upload directory (/tmp/noriben_uploads) and attempt to create a Postgres role/database 'noriben' with password 'noriben123' (best-effort).
 
+Additionally, a simple web-based configuration UI is available at /admin (when the API is running). The admin UI allows:
+- Viewing and editing runtime configuration (DATABASE_URL, CELERY_BROKER, UPLOAD_DIR, logging settings, API keys)
+- Persisting configuration to .env and applying changes without restarting the server
+- Attempting best-effort Postgres role/database creation
+- Running the setup script from the server (best-effort)
+
 Notes:
-- The script is best-effort and may require manual steps on some systems (e.g., adding Homebrew to PATH, starting Postgres, or adjusting firewall/permissions).
+- The admin UI does not implement authentication — do not expose it to untrusted networks without adding access control.
+- The setup and DB creation actions are best-effort and may require manual intervention or elevated privileges.
 - Review the script before running, it uses sudo for system package installation and service control.
 
 

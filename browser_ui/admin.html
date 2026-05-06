@@ -1,0 +1,55 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Noriben SOC — Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 p-6">
+  <div class="max-w-3xl mx-auto">
+    <h1 class="text-2xl font-bold mb-4">Admin — Configuration</h1>
+    <form id="cfg" class="space-y-3 bg-slate-800 p-4 rounded">
+      <label class="block"><span class="text-sm text-slate-400">Environment</span><input class="w-full p-2 rounded bg-slate-700" name="NORIBEN_ENV"></label>
+      <label class="block"><span class="text-sm text-slate-400">DATABASE_URL</span><input class="w-full p-2 rounded bg-slate-700" name="DATABASE_URL"></label>
+      <label class="block"><span class="text-sm text-slate-400">CELERY_BROKER</span><input class="w-full p-2 rounded bg-slate-700" name="CELERY_BROKER"></label>
+      <label class="block"><span class="text-sm text-slate-400">UPLOAD_DIR</span><input class="w-full p-2 rounded bg-slate-700" name="UPLOAD_DIR"></label>
+      <label class="block"><span class="text-sm text-slate-400">LOG_LEVEL</span><input class="w-full p-2 rounded bg-slate-700" name="LOG_LEVEL"></label>
+      <label class="block"><span class="text-sm text-slate-400">LOG_JSON (true/false)</span><input class="w-full p-2 rounded bg-slate-700" name="LOG_JSON"></label>
+      <label class="block"><span class="text-sm text-slate-400">VIRUSTOTAL_API_KEY</span><input class="w-full p-2 rounded bg-slate-700" name="VIRUSTOTAL_API_KEY"></label>
+      <label class="block"><span class="text-sm text-slate-400">OTX_API_KEY</span><input class="w-full p-2 rounded bg-slate-700" name="OTX_API_KEY"></label>
+      <div class="flex gap-2">
+        <button type="button" onclick="saveConfig()" class="px-4 py-2 bg-emerald-600 rounded">Save</button>
+        <button type="button" onclick="setupDb()" class="px-4 py-2 bg-blue-600 rounded">Setup DB</button>
+        <button type="button" onclick="runSetup()" class="px-4 py-2 bg-rose-600 rounded">Run full setup script</button>
+      </div>
+    </form>
+
+    <pre id="out" class="mt-4 p-3 bg-slate-800 rounded h-48 overflow-auto text-xs"></pre>
+  </div>
+
+<script>
+async function load(){
+  const r = await fetch('/admin/config');
+  const j = await r.json();
+  for(const k in j) if(document.querySelector('[name="'+k+'"]')) document.querySelector('[name="'+k+'"]').value = j[k] ?? '';
+}
+async function saveConfig(){
+  const form = document.getElementById('cfg');
+  const fd = new FormData(form);
+  const obj = {};
+  fd.forEach((v,k)=>obj[k]=v);
+  const r = await fetch('/admin/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)});
+  const j = await r.json(); document.getElementById('out').textContent = JSON.stringify(j, null, 2);
+}
+async function setupDb(){
+  const r = await fetch('/admin/setup-db',{method:'POST'});
+  const j = await r.json(); document.getElementById('out').textContent = JSON.stringify(j, null, 2);
+}
+async function runSetup(){
+  const r = await fetch('/admin/run-setup',{method:'POST'});
+  const j = await r.json(); document.getElementById('out').textContent = JSON.stringify(j, null, 2);
+}
+load();
+</script>
+</body>
+</html>
