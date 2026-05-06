@@ -1,4 +1,3 @@
-// ...existing code...
 """Base classes for scanner plugins.
 Each plugin must implement a `scan(file_path: str) -> dict` method returning a dict
 with at least ``"engine"`` and ``"result"`` keys.
@@ -42,4 +41,3 @@ def load_plugins() -> list[ScannerPlugin]:
             if isinstance(attr, type) and issubclass(attr, ScannerPlugin) and attr is not ScannerPlugin:
                 plugins.append(attr())
     return plugins
-// ...existing code...

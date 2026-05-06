@@ -329,9 +329,55 @@ newgrp kvm
 | ISO pobieranie zawiesza sie | Skrypt ponowi do 10 razy — czekaj lub pobierz recznie |
 | PCAP pusty | Sprawdz czy QEMU >= 2.11 (`qemu-system-x86_64 --version`) |
 | `docker compose` not found | `sudo apt install docker-compose-plugin` |
-| Port 5901/5902 zajety | `kill $(lsof -t -i:5901)` |
+| Port 5901/5902 zajety | `kill $(lsof -t -i :5901)` |
 | Brak wynikow dynamicznych | `docker compose logs celery` |
 | Win11 wolno dziala (TCG) | Mac ARM/Intel bez KVM — normalny czas analizy 15-20 min |
 
 ---
+
+## Developer setup (macOS / Ubuntu)
+
+Suggested steps to prepare a development environment and run tests locally.
+
+- Create and activate a virtualenv:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -U pip
+```
+
+- Install Python dev/test dependencies:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+- System packages (if you plan to run full integration or YARA/psycopg2 builds):
+
+macOS (Homebrew):
+
+```bash
+brew install postgresql yara clamav qemu
+```
+
+Ubuntu (apt):
+
+```bash
+sudo apt update
+sudo apt install -y build-essential libpq-dev postgresql yara clamav qemu-system-x86
+```
+
+Note: `pg_config` is provided by libpq-dev/postgresql-client-dev. Install it before installing packages like psycopg2.
+
+- Run tests (unit):
+
+```bash
+python -m pytest tests/test_pipeline.py::test_static -q
+```
+
+- For full test suite and integration tests you will need Docker and optionally QEMU images. See the top of this README for VM setup.
+
+---
+
 *Noriben SOC v6.8 — Cr3pT — 2026*

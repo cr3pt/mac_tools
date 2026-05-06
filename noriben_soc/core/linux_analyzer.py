@@ -29,19 +29,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def _ensure_tool(tool_name: str) -> None:
-    """Check if a tool is available in PATH, otherwise try to install it via apt.
-    Raises RuntimeError if installation fails.
+    """Check if a tool is available in PATH. Do not perform package manager
+    installations from library code. If the tool is missing raise a RuntimeError
+    with platform-specific install instructions so the caller (or operator) can
+    decide how to proceed.
     """
     if shutil.which(tool_name) is None:
-        logger.info("%s not found, attempting to install...", tool_name)
-        # Use apt-get for Debian/Ubuntu based systems
-        install_cmd = ['sudo', 'apt-get', 'update', '-qq']
-        subprocess.run(install_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        install_cmd = ['sudo', 'apt-get', 'install', '-y', tool_name]
-        result = subprocess.run(install_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to install required tool: {tool_name}")
-        logger.info("%s installed successfully.", tool_name)
+        if platform.system() == 'Darwin':
+            raise RuntimeError(f"{tool_name} not found. Install with Homebrew: brew install {tool_name}")
+        else:
+            raise RuntimeError(f"{tool_name} not found. Install with apt: sudo apt-get update && sudo apt-get install -y {tool_name}")
 
 def _get_trace_commands(sample_path: Path):
     """Return appropriate trace commands based on OS.

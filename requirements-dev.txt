@@ -1,0 +1,6 @@
+pytest
+pytest-asyncio
+requests
+# Optional: install python-yara if you want YARA rule testing
+# macOS: brew install yara && pip install yara
+# Ubuntu: sudo apt install -y yara && pip install yara
