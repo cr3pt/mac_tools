@@ -47,7 +47,18 @@ async function setupDb(){
 }
 async function runSetup(){
   const r = await fetch('/admin/run-setup',{method:'POST'});
-  const j = await r.json(); document.getElementById('out').textContent = JSON.stringify(j, null, 2);
+  const j = await r.json();
+  if(!j.ok){ document.getElementById('out').textContent = JSON.stringify(j, null, 2); return; }
+  const task = j.task_id;
+  document.getElementById('out').textContent = 'Started task: '+task+'\nConnecting to logs...';
+  // obtain short-lived token
+  const rt = await fetch('/admin/token',{method:'POST'});
+  const rtj = await rt.json();
+  const token = rtj.token;
+  const ws = new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+`/admin/run-setup/ws/${task}?token=${token}`);
+  ws.onmessage = (e)=>{document.getElementById('out').textContent += '\n'+e.data;};
+  ws.onopen = ()=>{document.getElementById('out').textContent += '\n[ws open]';};
+  ws.onclose = ()=>{document.getElementById('out').textContent += '\n[ws closed]';};
 }
 load();
 </script>
