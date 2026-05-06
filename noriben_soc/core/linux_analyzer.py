@@ -24,8 +24,8 @@ class LinuxAnalysisResult(TypedDict, total=False):
     scores: Dict[str, int]
     error: str
 
-# Configure basic logger
-logging.basicConfig(level=logging.INFO)
+from noriben_soc.logging_config import configure_logging
+configure_logging()
 logger = logging.getLogger(__name__)
 
 def _ensure_tool(tool_name: str) -> None:
