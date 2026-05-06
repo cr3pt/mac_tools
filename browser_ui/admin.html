@@ -29,6 +29,7 @@
     </form>
 
     <pre id="out" class="mt-4 p-3 bg-slate-800 rounded h-48 overflow-auto text-xs"></pre>
+    <div id="tasks" class="mt-4"></div>
   </div>
 
 <script>
@@ -38,10 +39,29 @@ async function load(){
   for(const k in j) if(document.querySelector('[name="'+k+'"]')) document.querySelector('[name="'+k+'"]').value = j[k] ?? '';
 }
 
-async function listTasks(){
+async async function listTasks(){
   const r = await fetch('/admin/run-setup/list');
   const j = await r.json();
+  const container = document.getElementById('tasks');
+  if(!j || !j.length){ container.innerHTML = '<div class="text-slate-500">No tasks</div>'; return; }
+  let html = '<table class="w-full text-xs"><thead><tr class="text-left text-slate-400"><th>Task ID</th><th>Script</th><th>Initiator</th><th>Start</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+  for(const t of j){
+    html += `<tr class="border-t border-slate-800"><td class="font-mono">${t.task_id}</td><td>${t.script}</td><td>${t.initiator||'-'}</td><td>${t.start_time||'-'}</td><td>${t.status||'-'}</td><td>`;
+    if(t.log_exists) html += `<a class="px-2 py-1 bg-slate-700 rounded text-xs" href="/admin/run-setup/logs/${t.task_id}">Download Log</a> `;
+    html += `<button onclick="deleteTask('${t.task_id}')" class="px-2 py-1 bg-rose-700 rounded text-xs">Delete</button>`;
+    html += '</td></tr>';
+  }
+  html += '</tbody></table>';
+  html += '<div class="mt-2"><a class="px-3 py-1 bg-slate-700 rounded text-xs" href="/admin/run-setup/export">Export CSV</a></div>';
+  container.innerHTML = html;
+}
+
+async function deleteTask(id){
+  if(!confirm('Delete task '+id+' and its log?')) return;
+  const r = await fetch(`/admin/run-setup/logs/${id}`,{method:'DELETE'});
+  const j = await r.json();
   document.getElementById('out').textContent = JSON.stringify(j, null, 2);
+  listTasks();
 }
 async function saveConfig(){
   const form = document.getElementById('cfg');

@@ -124,6 +124,12 @@ async def revoke_token_endpoint(payload: Dict[str, str]):
     return {'ok': True}
 
 
+@router.post('/token/revoke_all', dependencies=[Depends(admin_required)])
+async def revoke_all_tokens_endpoint():
+    n = admin_tokens.revoke_all_tokens()
+    return {'ok': True, 'revoked': n}
+
+
 @router.get('/run-setup/logs/{task_id}', dependencies=[Depends(admin_required)])
 async def get_log(task_id: str):
     task = get_task(task_id)

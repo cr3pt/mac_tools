@@ -66,3 +66,23 @@ def revoke_token(token: str) -> None:
             pass
     if token in _tokens:
         del _tokens[token]
+
+
+def revoke_all_tokens() -> int:
+    """Revoke all tokens. Returns number revoked."""
+    count = 0
+    r = _get_redis_client()
+    if r is not None:
+        try:
+            keys = r.keys(f"{REDIS_PREFIX}*")
+            if keys:
+                count = len(keys)
+                for k in keys:
+                    r.delete(k)
+                return count
+        except Exception:
+            pass
+    # fallback in-memory
+    count = len(_tokens)
+    _tokens.clear()
+    return count
