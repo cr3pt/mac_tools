@@ -4,7 +4,10 @@ All notable changes to this project are documented in this file.
 Format follows a Keep a Changelog style.
 
 ## [Unreleased]
-- Oczekiwane dalsze dopiski do README przy kazdej zmianie konfiguracji.
+- Dodano skrypt instalacyjny scripts/setup_env.sh — automatyczna instalacja zależności systemowych, tworzenie venv, instalacja paczek Python oraz próbne utworzenie bazy Postgres.
+- Dodano centralną konfigurację (.env/.env.example) i strukturalne logowanie (JSON/plain).
+- Rozdzielono zależności runtime i dev (requirements.txt, requirements-dev.txt).
+
 
 ## [v6.8-final-fix9] - 2026-05-05
 ### Added

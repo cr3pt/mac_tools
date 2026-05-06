@@ -335,9 +335,30 @@ newgrp kvm
 
 ---
 
+## Automated installer
+
+A convenience script is provided to prepare a development or testing host (macOS or Ubuntu). It performs a best-effort installation of system packages, creates a Python virtualenv and installs Python dependencies.
+
+Run (from repository root):
+
+```bash
+chmod +x scripts/setup_env.sh
+./scripts/setup_env.sh
+```
+
+The script will:
+- Install system packages (Homebrew on macOS, apt on Ubuntu) such as Python, Postgres (psql), libpq (pg_config), yara, clamav, qemu, redis and Docker where available.
+- Create a virtualenv at `.venv`, install runtime and dev Python dependencies (requirements.txt, requirements-dev.txt).
+- Create a default upload directory (/tmp/noriben_uploads) and attempt to create a Postgres role/database 'noriben' with password 'noriben123' (best-effort).
+
+Notes:
+- The script is best-effort and may require manual steps on some systems (e.g., adding Homebrew to PATH, starting Postgres, or adjusting firewall/permissions).
+- Review the script before running, it uses sudo for system package installation and service control.
+
+
 ## Developer setup (macOS / Ubuntu)
 
-Suggested steps to prepare a development environment and run tests locally.
+Suggested manual steps (alternative to the installer):
 
 - Create and activate a virtualenv:
 
