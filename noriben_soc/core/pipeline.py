@@ -80,10 +80,18 @@ async def analyze_sample(sample_path: Path) -> dict:
     memory_analysis = None
     if sample_path.suffix not in ('.evtx', '.pdf', '.doc', '.docx', '.xls', '.xlsx'):
         # Run Linux sandbox analysis in parallel with Windows if needed
-        linux_dynamic = await run_linux_analysis(sample_path)
+        try:
+            linux_dynamic = await run_linux_analysis(sample_path)
+        except Exception as e:
+            logger.warning('Linux analysis skipped: %s', e)
+            linux_dynamic = {'error': str(e)}
         # Simple memory analysis using Volatility if a memory dump is provided
         if sample_path.suffix in ('.raw', '.mem'):
-            memory_analysis = await _analyze_memory(sample_path)
+            try:
+                memory_analysis = await _analyze_memory(sample_path)
+            except Exception as e:
+                logger.exception('Memory analysis failed: %s', e)
+                memory_analysis = {'error': str(e)}
 
     # Polacz wyniki dual-VM
     merged = merge_dual_results(dynamic_win10, dynamic_win11)
