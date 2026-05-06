@@ -9,7 +9,7 @@ import time
 from ..admin_tasks import start_script, get_task, read_lines, task_status, cancel_task
 import asyncio
 import uuid
-from ..admin_tokens import issue_token, validate_token, revoke_token
+from .. import admin_tokens
 
 security = HTTPBasic()
 router = APIRouter()
@@ -104,8 +104,8 @@ async def run_setup_status(task_id: str):
 
 
 @router.post('/token', dependencies=[Depends(admin_required)])
-async def issue_token():
-    token = issue_token()
+async def issue_token_endpoint():
+    token = admin_tokens.issue_token()
     return {'token': token}
 
 
@@ -113,6 +113,15 @@ async def issue_token():
 async def cancel_run(task_id: str):
     ok = cancel_task(task_id)
     return {'ok': ok}
+
+
+@router.post('/token/revoke', dependencies=[Depends(admin_required)])
+async def revoke_token_endpoint(payload: Dict[str, str]):
+    t = payload.get('token')
+    if not t:
+        return {'ok': False, 'error': 'no token'}
+    admin_tokens.revoke_token(t)
+    return {'ok': True}
 
 
 @router.get('/run-setup/logs/{task_id}', dependencies=[Depends(admin_required)])
@@ -133,7 +142,7 @@ async def ws_logs(ws: WebSocket, task_id: str):
     query = ws.scope.get('query_string', b'').decode()
     params = dict(item.split('=') for item in query.split('&') if '=' in item) if query else {}
     token = params.get('token')
-    if not token or not validate_token(token):
+    if not token or not admin_tokens.validate_token(token):
         await ws.close(code=1008)
         return
     await ws.accept()

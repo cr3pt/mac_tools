@@ -22,6 +22,7 @@
         <button type="button" onclick="setupDb()" class="px-4 py-2 bg-blue-600 rounded">Setup DB</button>
         <button id="run-btn" type="button" onclick="runSetup()" class="px-4 py-2 bg-rose-600 rounded">Run full setup script</button>
         <button id="cancel-btn" type="button" onclick="cancelTask()" class="px-4 py-2 bg-yellow-600 rounded hidden">Cancel</button>
+        <button id="revoke-btn" type="button" onclick="revokeToken()" class="px-4 py-2 bg-indigo-600 rounded hidden">Revoke Token</button>
         <a id="download-link" class="px-4 py-2 bg-slate-700 rounded text-xs hidden">Download Log</a>
       </div>
     </form>
@@ -63,10 +64,13 @@ async function runSetup(){
   const rt = await fetch('/admin/token',{method:'POST'});
   const rtj = await rt.json();
   const token = rtj.token;
+  // store token for revoke
+  window.currentAdminToken = token;
+  document.getElementById('revoke-btn').classList.remove('hidden');
   const ws = new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+`/admin/run-setup/ws/${task}?token=${token}`);
   ws.onmessage = (e)=>{document.getElementById('out').textContent += '\n'+e.data;};
   ws.onopen = ()=>{document.getElementById('out').textContent += '\n[ws open]';};
-  ws.onclose = ()=>{document.getElementById('out').textContent += '\n[ws closed]'; cancelBtn.classList.add('hidden'); dl.classList.remove('hidden'); dl.href = `/admin/run-setup/logs/${task}`; dl.textContent = 'Download Log'; runBtn.disabled = false;};
+  ws.onclose = ()=>{document.getElementById('out').textContent += '\n[ws closed]'; cancelBtn.classList.add('hidden'); dl.classList.remove('hidden'); dl.href = `/admin/run-setup/logs/${task}`; dl.textContent = 'Download Log'; runBtn.disabled = false; document.getElementById('revoke-btn').classList.add('hidden');};
   // keep task id in button dataset
   cancelBtn.dataset.task = task;
 }
@@ -80,6 +84,17 @@ async function cancelTask(){
   document.getElementById('out').textContent += '\nCancel result: '+JSON.stringify(j);
   cancelBtn.classList.add('hidden');
 }
+
+async function revokeToken(){
+  const token = window.currentAdminToken;
+  if(!token) return;
+  const r = await fetch('/admin/token/revoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
+  const j = await r.json();
+  document.getElementById('out').textContent += '\nRevoke result: '+JSON.stringify(j);
+  document.getElementById('revoke-btn').classList.add('hidden');
+  window.currentAdminToken = null;
+}
+
 load();
 </script>
 </body>

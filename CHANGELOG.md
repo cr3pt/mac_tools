@@ -7,6 +7,9 @@ Format follows a Keep a Changelog style.
 - Dodano skrypt instalacyjny scripts/setup_env.sh — automatyczna instalacja zależności systemowych, tworzenie venv, instalacja paczek Python oraz próbne utworzenie bazy Postgres.
 - Dodano centralną konfigurację (.env/.env.example) i strukturalne logowanie (JSON/plain).
 - Rozdzielono zależności runtime i dev (requirements.txt, requirements-dev.txt).
+- Dodano panel administracyjny webowy (/admin) z Basic Auth, asynchronicznym uruchamianiem skryptu setup oraz strumieniowaniem logów przez WebSocket.
+- Dodano możliwość pobrania logów z wykonanych zadań oraz anulowania (cancel) zadań.
+- Dodano rotację logów (>5MB) i możliwość cofnięcia tokenu WebSocket poprzez /admin/token/revoke (Redis-backed token store, fallback in-memory).
 
 
 ## [v6.8-final-fix9] - 2026-05-05

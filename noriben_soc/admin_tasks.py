@@ -42,6 +42,37 @@ async def _run_process(task_id: str, script: str):
         await q.put(None)
 
 
+def _rotate_log_if_needed(log_file: 'pathlib.Path', max_size: int = 5 * 1024 * 1024, backups: int = 3):
+    """Rotate log file if it exceeds max_size. Keeps up to `backups` rotated files.
+    Rotation scheme: taskid.log -> taskid.1, taskid.1 -> taskid.2, ..."""
+    try:
+        import pathlib
+        p = pathlib.Path(log_file)
+        if not p.exists():
+            return
+        try:
+            if p.stat().st_size <= max_size:
+                return
+        except Exception:
+            return
+        # rotate
+        for i in range(backups - 1, 0, -1):
+            older = p.with_suffix(f'.{i}')
+            newer = p.with_suffix(f'.{i+1}')
+            if older.exists():
+                try:
+                    older.replace(newer)
+                except Exception:
+                    pass
+        first = p.with_suffix('.1')
+        try:
+            p.replace(first)
+        except Exception:
+            pass
+    except Exception:
+        return
+
+
 def cancel_task(task_id: str) -> bool:
     """Attempt to cancel/kill a running task. Returns True if killed/was running."""
     t = _tasks.get(task_id)
@@ -72,6 +103,29 @@ async def start_script(script_path: str) -> str:
     loop = asyncio.get_event_loop()
     loop.create_task(_run_process(task_id, script_path))
     return task_id
+
+
+def get_task(task_id: str):
+    return _tasks.get(task_id)
+
+
+async def read_lines(task_id: str):
+    t = _tasks.get(task_id)
+    if not t:
+        return
+    q: asyncio.Queue = t['queue']
+    while True:
+        line = await q.get()
+        if line is None:
+            break
+        yield line
+
+
+def task_status(task_id: str):
+    t = _tasks.get(task_id)
+    if not t:
+        return {'exists': False}
+    return {'exists': True, 'done': t.get('done', False), 'returncode': t.get('returncode')}
 
 
 def get_task(task_id: str):

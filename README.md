@@ -356,9 +356,11 @@ Additionally, a simple web-based configuration UI is available at /admin (when t
 - Persisting configuration to .env and applying changes without restarting the server
 - Attempting best-effort Postgres role/database creation
 - Running the setup script from the server (best-effort)
+- Streaming live logs from the setup script (WebSocket) and downloading the full log after completion
+- Cancelling a running setup task and revoking short-lived WS tokens
 
 Notes:
-- The admin UI does not implement authentication — do not expose it to untrusted networks without adding access control.
+- The admin UI is protected with HTTP Basic Auth. Set ADMIN_USER and ADMIN_PASS in .env before using. Do not expose to public networks without additional protections (reverse proxy, VPN, IP allowlist, or stronger auth).
 - The setup and DB creation actions are best-effort and may require manual intervention or elevated privileges.
 - Review the script before running, it uses sudo for system package installation and service control.
 
