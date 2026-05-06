@@ -1,10 +1,4 @@
-import asyncio, hashlib, subprocess, logging
-# Optional import for HTTP requests; fallback if not installed
-try:
-    import requests
-except ImportError:  # pragma: no cover
-    requests = None
-
+import asyncio, hashlib, subprocess
 from pathlib import Path
 from .yara_engine      import run_yara_scan
 from .sigma_engine     import run_sigma_scan
@@ -16,11 +10,16 @@ from .linux_analyzer   import run_linux_analysis
 from .cache import get_cached, set_cached
 from noriben_soc.scanners.base import load_plugins
 
-# Logging setup
-logging.basicConfig(filename='noriben.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+import logging
+from noriben_soc.logging_config import configure_logging
+from noriben_soc.config import settings
+
+# Ensure logging configured according to settings
+configure_logging()
+logger = logging.getLogger('noriben')
 
 async def analyze_sample(sample_path: Path) -> dict:
-    logging.info(f"Starting analysis for {sample_path}")
+    logger.info('Starting analysis for %s', sample_path)
     raw    = sample_path.read_bytes()
     sha256 = hashlib.sha256(raw).hexdigest()
     md5    = hashlib.md5(raw).hexdigest()
@@ -64,7 +63,7 @@ async def analyze_sample(sample_path: Path) -> dict:
             set_cached(plugin.__class__.__name__, str(sample_path), result)
             plugin_results.append(result)
         except Exception as e:
-            logging.error(f"Plugin {plugin.__class__.__name__} failed: {e}")
+            logger.exception("Plugin %s failed", plugin.__class__.__name__)
 
     dynamic_win10 = None
     dynamic_win11 = None
@@ -106,7 +105,7 @@ async def analyze_sample(sample_path: Path) -> dict:
         mitre          = _map_mitre(yara_hits + sigma_hits),
     )
     await save_result(result)
-    logging.info(f"Analysis completed for {sample_path}, severity: {result['severity']}")
+    logger.info('Analysis completed for %s, severity: %s', sample_path, result['severity'])
     _generate_report(result)
     _send_alert(result)
     return result
@@ -180,14 +179,17 @@ def _detect_file_type(raw):
 def _check_virustotal(sha256):
     """Check file reputation using VirusTotal API."""
     try:
-        api_key = 'YOUR_VIRUSTOTAL_API_KEY'
+        if requests is None or not settings.VIRUSTOTAL_API_KEY:
+            logger.debug('VirusTotal not configured or requests missing')
+            return {}
+        api_key = settings.VIRUSTOTAL_API_KEY
         url = f'https://www.virustotal.com/api/v3/files/{sha256}'
         headers = {'x-apikey': api_key}
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         return response.json().get('data', {}).get('attributes', {}).get('last_analysis_results', {})
     except Exception as e:
-        logging.error(f"VirusTotal check failed for {sha256}: {e}")
+        logger.exception('VirusTotal check failed for %s', sha256)
         return {}
 
 def _scan_clamav(sample_path):
@@ -199,7 +201,7 @@ def _scan_clamav(sample_path):
         else:
             return {'infected': True, 'details': result.stdout}
     except Exception as e:
-        logging.error(f"ClamAV scan failed for {sample_path}: {e}")
+        logger.exception('ClamAV scan failed for %s', sample_path)
         return {}
 
 def _analyze_office(sample_path):
@@ -234,7 +236,7 @@ def _analyze_office(sample_path):
 
         return {'metadata': metadata, 'macros': macros}
     except Exception as e:
-        logging.error(f"Office analysis failed for {sample_path}: {e}")
+        logger.exception('Office analysis failed for %s', sample_path)
         return {}
 
 def _analyze_pdf(sample_path):
@@ -253,7 +255,7 @@ def _analyze_pdf(sample_path):
 
         return {'metadata': metadata, 'text': text}
     except Exception as e:
-        logging.error(f"PDF analysis failed for {sample_path}: {e}")
+        logger.exception('PDF analysis failed for %s', sample_path)
         return {}
 
 def _check_otx(sha256):
@@ -266,7 +268,7 @@ def _check_otx(sha256):
         response.raise_for_status()
         return response.json().get('pulse_info', {})
     except Exception as e:
-        logging.error(f"OTX check failed for {sha256}: {e}")
+        logger.exception('OTX check failed for %s', sha256)
         return {}
 
 def _generate_report(result):
@@ -290,18 +292,18 @@ def _generate_report(result):
             report_file.write(f"OTX Results: {result['static']['otx']}\n")
             report_file.write(f"MITRE ATT&CK Tactics: {result['mitre']}\n")
             report_file.write(f"Severity: {result['severity']}\n")
-        logging.info(f"Report generated for {result['filename']}")
+        logger.info('Report generated for %s', result['filename'])
     except Exception as e:
-        logging.error(f"Report generation failed for {result['filename']}: {e}")
+        logger.exception('Report generation failed for %s', result['filename'])
 
 def _send_alert(result):
     """Send an alert based on the analysis results."""
     try:
         if result['severity'] >= 70:
             # Send email alert (placeholder)
-            logging.info(f"Alert sent for {result['filename']}, severity: {result['severity']}")
+            logger.info('Alert sent for %s, severity: %s', result['filename'], result['severity'])
     except Exception as e:
-        logging.error(f"Alert sending failed for {result['filename']}: {e}")
+        logger.exception('Alert sending failed for %s', result['filename'])
 
 async def _analyze_memory(memory_dump_path):
     """Analyze memory dump using Volatility."""
@@ -333,8 +335,8 @@ async def _analyze_memory(memory_dump_path):
         if reg_result.returncode == 0:
             results['registry'] = reg_result.stdout.split('\n')[:20]  # limit
 
-        logging.info(f"Memory analysis completed for {memory_dump_path}")
+        logger.info('Memory analysis completed for %s', memory_dump_path)
         return results
     except Exception as e:
-        logging.error(f"Memory analysis failed for {memory_dump_path}: {e}")
+        logger.exception('Memory analysis failed for %s', memory_dump_path)
         return {'error': str(e)}
