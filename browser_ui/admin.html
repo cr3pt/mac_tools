@@ -20,7 +20,9 @@
       <div class="flex gap-2">
         <button type="button" onclick="saveConfig()" class="px-4 py-2 bg-emerald-600 rounded">Save</button>
         <button type="button" onclick="setupDb()" class="px-4 py-2 bg-blue-600 rounded">Setup DB</button>
-        <button type="button" onclick="runSetup()" class="px-4 py-2 bg-rose-600 rounded">Run full setup script</button>
+        <button id="run-btn" type="button" onclick="runSetup()" class="px-4 py-2 bg-rose-600 rounded">Run full setup script</button>
+        <button id="cancel-btn" type="button" onclick="cancelTask()" class="px-4 py-2 bg-yellow-600 rounded hidden">Cancel</button>
+        <a id="download-link" class="px-4 py-2 bg-slate-700 rounded text-xs hidden">Download Log</a>
       </div>
     </form>
 
@@ -46,10 +48,16 @@ async function setupDb(){
   const j = await r.json(); document.getElementById('out').textContent = JSON.stringify(j, null, 2);
 }
 async function runSetup(){
+  const runBtn = document.getElementById('run-btn');
+  const cancelBtn = document.getElementById('cancel-btn');
+  const dl = document.getElementById('download-link');
+  runBtn.disabled = true;
   const r = await fetch('/admin/run-setup',{method:'POST'});
   const j = await r.json();
-  if(!j.ok){ document.getElementById('out').textContent = JSON.stringify(j, null, 2); return; }
+  if(!j.ok){ document.getElementById('out').textContent = JSON.stringify(j, null, 2); runBtn.disabled = false; return; }
   const task = j.task_id;
+  cancelBtn.classList.remove('hidden');
+  dl.classList.add('hidden');
   document.getElementById('out').textContent = 'Started task: '+task+'\nConnecting to logs...';
   // obtain short-lived token
   const rt = await fetch('/admin/token',{method:'POST'});
@@ -58,7 +66,19 @@ async function runSetup(){
   const ws = new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+`/admin/run-setup/ws/${task}?token=${token}`);
   ws.onmessage = (e)=>{document.getElementById('out').textContent += '\n'+e.data;};
   ws.onopen = ()=>{document.getElementById('out').textContent += '\n[ws open]';};
-  ws.onclose = ()=>{document.getElementById('out').textContent += '\n[ws closed]';};
+  ws.onclose = ()=>{document.getElementById('out').textContent += '\n[ws closed]'; cancelBtn.classList.add('hidden'); dl.classList.remove('hidden'); dl.href = `/admin/run-setup/logs/${task}`; dl.textContent = 'Download Log'; runBtn.disabled = false;};
+  // keep task id in button dataset
+  cancelBtn.dataset.task = task;
+}
+
+async function cancelTask(){
+  const cancelBtn = document.getElementById('cancel-btn');
+  const task = cancelBtn.dataset.task;
+  if(!task) return;
+  const r = await fetch(`/admin/run-setup/cancel/${task}`,{method:'POST'});
+  const j = await r.json();
+  document.getElementById('out').textContent += '\nCancel result: '+JSON.stringify(j);
+  cancelBtn.classList.add('hidden');
 }
 load();
 </script>

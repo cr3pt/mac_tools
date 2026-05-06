@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Request, Depends, HTTPException, WebSocket, WebSocketDisconnect, Response
 from typing import Dict
 from ..config import settings, save_env_file, update_settings, get_settings_dict
 import subprocess, os, json
@@ -6,15 +6,13 @@ import pathlib
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import secrets
 import time
-from ..admin_tasks import start_script, get_task, read_lines, task_status
+from ..admin_tasks import start_script, get_task, read_lines, task_status, cancel_task
 import asyncio
 import uuid
+from ..admin_tokens import issue_token, validate_token, revoke_token
 
 security = HTTPBasic()
 router = APIRouter()
-
-# Simple in-memory token store for websocket auth
-_tokens: Dict[str, float] = {}
 
 
 def admin_required(creds: HTTPBasicCredentials = Depends(security)):
@@ -107,9 +105,26 @@ async def run_setup_status(task_id: str):
 
 @router.post('/token', dependencies=[Depends(admin_required)])
 async def issue_token():
-    token = uuid.uuid4().hex
-    _tokens[token] = time.time() + 300
+    token = issue_token()
     return {'token': token}
+
+
+@router.post('/run-setup/cancel/{task_id}', dependencies=[Depends(admin_required)])
+async def cancel_run(task_id: str):
+    ok = cancel_task(task_id)
+    return {'ok': ok}
+
+
+@router.get('/run-setup/logs/{task_id}', dependencies=[Depends(admin_required)])
+async def get_log(task_id: str):
+    task = get_task(task_id)
+    if not task:
+        return Response(status_code=404, content='Not found')
+    log_file = task.get('log_file')
+    if not log_file or not os.path.exists(log_file):
+        return Response(status_code=404, content='Log not found')
+    from fastapi.responses import FileResponse
+    return FileResponse(log_file, media_type='text/plain', filename=f"{task_id}.log")
 
 
 @router.websocket('/run-setup/ws/{task_id}')
@@ -118,7 +133,7 @@ async def ws_logs(ws: WebSocket, task_id: str):
     query = ws.scope.get('query_string', b'').decode()
     params = dict(item.split('=') for item in query.split('&') if '=' in item) if query else {}
     token = params.get('token')
-    if not token or token not in _tokens or _tokens[token] < time.time():
+    if not token or not validate_token(token):
         await ws.close(code=1008)
         return
     await ws.accept()
@@ -136,3 +151,5 @@ async def ws_logs(ws: WebSocket, task_id: str):
     except WebSocketDisconnect:
         return
     await ws.close()
+
+

@@ -12,6 +12,7 @@ try:
         UPLOAD_DIR: str = '/tmp/noriben_uploads'
         VIRUSTOTAL_API_KEY: Optional[str] = None
         OTX_API_KEY: Optional[str] = None
+        REDIS_URL: Optional[str] = None
 
         class Config:
             env_file = '.env'
@@ -28,6 +29,7 @@ except Exception:
         UPLOAD_DIR = os.getenv('UPLOAD_DIR', '/tmp/noriben_uploads')
         VIRUSTOTAL_API_KEY = os.getenv('VIRUSTOTAL_API_KEY')
         OTX_API_KEY = os.getenv('OTX_API_KEY')
+        REDIS_URL = os.getenv('REDIS_URL')
 
     settings = Settings()
 
