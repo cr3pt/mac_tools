@@ -19,6 +19,9 @@ async def _run_process(task_id: str, script: str):
     # read stdout
     try:
         with open(log_file, 'ab') as lf:
+            from noriben_soc.config import settings as cfg
+            max_bytes = int(getattr(cfg, 'LOG_ROTATE_MAX_BYTES', 5 * 1024 * 1024))
+            backups = int(getattr(cfg, 'LOG_ROTATE_BACKUPS', 3))
             while True:
                 line = await proc.stdout.readline()
                 if not line:
@@ -31,6 +34,15 @@ async def _run_process(task_id: str, script: str):
                     lf.flush()
                 except Exception:
                     pass
+                # check rotation
+                try:
+                    if lf.tell() > max_bytes:
+                        _rotate_log_if_needed(log_file, max_size=max_bytes, backups=backups)
+                        # reopen new file
+                        lf.close()
+                        lf = open(log_file, 'ab')
+                except Exception:
+                    pass
         await proc.wait()
         _tasks[task_id]['returncode'] = proc.returncode
     except Exception as e:
@@ -38,6 +50,13 @@ async def _run_process(task_id: str, script: str):
         _tasks[task_id]['returncode'] = -1
     finally:
         _tasks[task_id]['done'] = True
+        # update audit
+        try:
+            from . import task_audit
+            status = 'success' if _tasks[task_id].get('returncode', 1) == 0 else 'failed'
+            task_audit.record_end(task_id, status, _tasks[task_id].get('returncode'))
+        except Exception:
+            pass
         # put sentinel
         await q.put(None)
 
@@ -97,8 +116,14 @@ def cancel_task(task_id: str) -> bool:
         return False
 
 
-async def start_script(script_path: str) -> str:
+async def start_script(script_path: str, initiator: str = None) -> str:
     task_id = uuid.uuid4().hex
+    # record start in audit
+    try:
+        from . import task_audit
+        task_audit.record_start(task_id, script_path, initiator)
+    except Exception:
+        pass
     # schedule background task
     loop = asyncio.get_event_loop()
     loop.create_task(_run_process(task_id, script_path))

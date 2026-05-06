@@ -89,12 +89,12 @@ async def setup_db():
     return out
 
 
-@router.post('/run-setup', dependencies=[Depends(admin_required)])
-async def run_setup():
+@router.post('/run-setup')
+async def run_setup(user: str = Depends(admin_required)):
     script = os.path.join(os.getcwd(), 'scripts', 'setup_env.sh')
     if not os.path.exists(script):
         return {'ok': False, 'error': 'script not found'}
-    task_id = await start_script(script)
+    task_id = await start_script(script, initiator=user)
     return {'ok': True, 'task_id': task_id}
 
 

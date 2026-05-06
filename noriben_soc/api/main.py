@@ -14,7 +14,9 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title='Noriben SOC v6.8')
 app.mount('/static', StaticFiles(directory='browser_ui'), name='static')
 from .admin import router as admin_router
+from .admin_extra import router as admin_extra_router
 app.include_router(admin_router, prefix='/admin')
+app.include_router(admin_extra_router, prefix='/admin')
 
 @app.get('/')
 async def index():

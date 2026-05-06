@@ -13,12 +13,33 @@ try:
         VIRUSTOTAL_API_KEY: Optional[str] = None
         OTX_API_KEY: Optional[str] = None
         REDIS_URL: Optional[str] = None
+        # log rotation
+        LOG_ROTATE_MAX_BYTES: int = 5 * 1024 * 1024
+        LOG_ROTATE_BACKUPS: int = 3
+        # audit DB
+        AUDIT_DB_PATH: str = 'data/tasks_audit.sqlite3'
 
         class Config:
             env_file = '.env'
 
     settings = Settings()
 except Exception:
+    # Fallback minimal settings if pydantic is not available
+    class Settings:
+        NORIBEN_ENV = os.getenv('NORIBEN_ENV', 'development')
+        DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://noriben:noriben123@localhost/noriben')
+        CELERY_BROKER = os.getenv('CELERY_BROKER', 'redis://localhost:6379/0')
+        LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+        LOG_JSON = os.getenv('LOG_JSON', 'False').lower() in ('1','true','yes')
+        UPLOAD_DIR = os.getenv('UPLOAD_DIR', '/tmp/noriben_uploads')
+        VIRUSTOTAL_API_KEY = os.getenv('VIRUSTOTAL_API_KEY')
+        OTX_API_KEY = os.getenv('OTX_API_KEY')
+        REDIS_URL = os.getenv('REDIS_URL')
+        LOG_ROTATE_MAX_BYTES = int(os.getenv('LOG_ROTATE_MAX_BYTES', str(5 * 1024 * 1024)))
+        LOG_ROTATE_BACKUPS = int(os.getenv('LOG_ROTATE_BACKUPS', '3'))
+        AUDIT_DB_PATH = os.getenv('AUDIT_DB_PATH', 'data/tasks_audit.sqlite3')
+
+    settings = Settings()
     # Fallback minimal settings if pydantic is not available
     class Settings:
         NORIBEN_ENV = os.getenv('NORIBEN_ENV', 'development')

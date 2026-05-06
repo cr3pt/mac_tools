@@ -24,6 +24,7 @@
         <button id="cancel-btn" type="button" onclick="cancelTask()" class="px-4 py-2 bg-yellow-600 rounded hidden">Cancel</button>
         <button id="revoke-btn" type="button" onclick="revokeToken()" class="px-4 py-2 bg-indigo-600 rounded hidden">Revoke Token</button>
         <a id="download-link" class="px-4 py-2 bg-slate-700 rounded text-xs hidden">Download Log</a>
+        <button type="button" onclick="listTasks()" class="px-4 py-2 bg-slate-600 rounded">List Tasks</button>
       </div>
     </form>
 
@@ -35,6 +36,12 @@ async function load(){
   const r = await fetch('/admin/config');
   const j = await r.json();
   for(const k in j) if(document.querySelector('[name="'+k+'"]')) document.querySelector('[name="'+k+'"]').value = j[k] ?? '';
+}
+
+async function listTasks(){
+  const r = await fetch('/admin/run-setup/list');
+  const j = await r.json();
+  document.getElementById('out').textContent = JSON.stringify(j, null, 2);
 }
 async function saveConfig(){
   const form = document.getElementById('cfg');
