@@ -155,6 +155,11 @@ Dodatkowe zmienne środowiskowe (opcjonalne):
 
 Te ustawienia pomagają izolować analizę i ograniczyć wpływ na host.
 
+Proxy sieciowy: dodano prosty HTTP/HTTPS proxy z allowlistą (noriben_soc/core/net_proxy.py). Proxy obsługuje metodę CONNECT oraz zwykłe żądania HTTP. Domyślnie nasłuchuje na 127.0.0.1:3128 i akceptuje hosty z listy NET_PROXY_ALLOWLIST (np. "example.com,updates.vendor.local").
+
+Aby użyć proxy z VM: skonfiguruj przeglądarkę w VM, albo ustaw systemowy HTTP proxy na adres hosta (host może być 10.0.2.2 z usernetem QEMU). W przyszłości planowane jest automatyczne wystawienie WPAD i DHCP — na razie proxy uruchamiany jest po stronie hosta i wymaga ręcznej konfiguracji gościa.
+
+
 ---
 
 

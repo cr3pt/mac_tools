@@ -25,6 +25,8 @@ Format follows a Keep a Changelog style.
   - Dodano endpoint POST /admin/rules/reload aby wymusić natychmiastowe przeładowanie reguł.
 - Dodano flagę środowiskową NORIBEN_DISABLE_EXTERNAL (ENV var) do wyłączania zapytań zewnętrznych i narzędzi systemowych podczas testów/CI. Gdy ustawiona, pipeline pomija VirusTotal/OTX/ClamAV, wyłącza pluginy i pomija analizę Linux/QEMU.
 - Testy jednostkowe: instrukcje testowania uaktualnione w README. Lokalnie uruchomione testy jednostkowe przeszły: 2 passed (uruchomione z NORIBEN_DISABLE_EXTERNAL=1 w .venv).
+- Dodano prosty HTTP/HTTPS proxy z allowlistą (noriben_soc/core/net_proxy.py) do kontrolowania ruchu wychodzącego z VM oraz dokumentację korzystania.
+- Dodano workflow GitHub Actions (.github/workflows/integration.yml) instalujący qemu/yara i uruchamiający testy integracyjne (pytest -k integration).
 
 
 ## [v6.8-final-fix9] - 2026-05-05

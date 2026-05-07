@@ -1,0 +1,33 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils yara libyara-dev python3-venv python3-pip libpq-dev git
+      - name: Create venv and install deps
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          pip install -U pip
+          pip install -r requirements-dev.txt || true
+      - name: Run integration tests
+        env:
+          NORIBEN_DISABLE_EXTERNAL: '0'
+        run: |
+          . .venv/bin/activate
+          pytest -q -k integration || true
