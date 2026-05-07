@@ -16,7 +16,8 @@ except Exception:
 
 _server = None
 
-async def start_dns(bind_host: str = '127.0.0.1', port: int = 5300):
+async def start_dns(bind_host: str = '0.0.0.0', port: int = 53):
+    """Attempt to bind to UDP port 53; if not permitted, fallback to 5300."""
     if not HAS_DNSLIB:
         LOG.warning('dnslib not available — DNS responder disabled')
         return None
@@ -41,9 +42,19 @@ async def start_dns(bind_host: str = '127.0.0.1', port: int = 5300):
         except Exception:
             LOG.exception('Failed to handle DNS')
 
-    sock = socket = __import__('socket')
-    server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    server.bind((bind_host, port))
+    sockmod = __import__('socket')
+    server = sockmod.socket(sockmod.AF_INET, sockmod.SOCK_DGRAM)
+    try:
+        server.bind((bind_host, port))
+    except Exception:
+        try:
+            fallback_port = 5300
+            server.bind((bind_host, fallback_port))
+            LOG.warning('Could not bind to port %d, bound to fallback %d', port, fallback_port)
+            port = fallback_port
+        except Exception:
+            LOG.exception('Failed to bind DNS responder')
+            return None
 
     loop.add_reader(server.fileno(), handle, server)
     LOG.info('DNS responder started on %s:%d (wpad=%s -> %s)', bind_host, port, WPAD_NAME, WPAD_ADDR)

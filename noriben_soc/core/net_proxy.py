@@ -11,7 +11,7 @@ LOG = logging.getLogger("noriben.netproxy")
 
 ALLOWLIST = [h.strip().lower() for h in os.getenv('NET_PROXY_ALLOWLIST', 'example.com').split(',') if h.strip()]
 PORT = int(os.getenv('NET_PROXY_PORT', '3128'))
-BIND_HOST = os.getenv('NET_PROXY_BIND', '127.0.0.1')
+BIND_HOST = os.getenv('NET_PROXY_BIND', '0.0.0.0')
 
 async def _pipe(reader, writer):
     try:

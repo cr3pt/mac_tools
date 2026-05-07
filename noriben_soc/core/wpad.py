@@ -6,9 +6,9 @@ import logging
 import os
 
 LOG = logging.getLogger('noriben.wpad')
-BIND = os.getenv('NET_PROXY_BIND', '127.0.0.1')
+BIND = os.getenv('NET_PROXY_BIND', '0.0.0.0')
 PORT = int(os.getenv('NET_PROXY_WPAD_PORT', '3129'))
-PROXY_HOST = os.getenv('NET_PROXY_BIND', '127.0.0.1')
+PROXY_HOST = os.getenv('NET_PROXY_BIND', '0.0.0.0')
 PROXY_PORT = int(os.getenv('NET_PROXY_PORT', '3128'))
 
 async def _handle(reader, writer):

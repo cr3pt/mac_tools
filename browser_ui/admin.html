@@ -26,6 +26,9 @@
         <a id="download-link" class="px-4 py-2 bg-slate-700 rounded text-xs hidden">Download Log</a>
         <button type="button" onclick="listTasks()" class="px-4 py-2 bg-slate-600 rounded">List Tasks</button>
         <button type="button" onclick="pruneNow()" class="px-4 py-2 bg-amber-600 rounded">Prune Old Logs</button>
+        <button type="button" onclick="getNetworkStatus()" class="px-4 py-2 bg-indigo-600 rounded">Network Status</button>
+        <button type="button" onclick="startNetworkHelpers()" class="px-4 py-2 bg-emerald-500 rounded">Start Proxy/WPAD/DNS</button>
+        <button type="button" onclick="stopNetworkHelpers()" class="px-4 py-2 bg-rose-500 rounded">Stop Proxy/WPAD/DNS</button>
       </div>
     </form>
 
@@ -208,6 +211,32 @@ async function reloadRules(){
   const r = await fetch('/admin/rules/reload',{method:'POST'});
   const j = await r.json(); document.getElementById('out').textContent += '\nReload rules: '+JSON.stringify(j);
   listRules();
+}
+
+async function getNetworkStatus(){
+  const r = await fetch('/admin/network/helpers/status');
+  const j = await r.json();
+  document.getElementById('out').textContent += '\nNetwork status: '+JSON.stringify(j, null, 2);
+}
+
+async function startNetworkHelpers(){
+  document.getElementById('out').textContent += '\nStarting network helpers...';
+  const r = await fetch('/admin/network/helpers/start',{method:'POST'});
+  const j = await r.json();
+  document.getElementById('out').textContent += '\nStart result: '+JSON.stringify(j, null, 2);
+}
+
+async function stopNetworkHelpers(){
+  document.getElementById('out').textContent += '\nStopping network helpers...';
+  const r = await fetch('/admin/network/helpers/stop',{method:'POST'});
+  const j = await r.json();
+  document.getElementById('out').textContent += '\nStop result: '+JSON.stringify(j, null, 2);
+}
+
+async function showProxyStats(){
+  const r = await fetch('/admin/network/proxy/stats');
+  const j = await r.json();
+  document.getElementById('out').textContent += '\nProxy stats: '+JSON.stringify(j, null, 2);
 }
 
 // init
