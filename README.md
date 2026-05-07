@@ -137,6 +137,8 @@ Skrypt instaluje Python 3.11 i Noriben (Process Monitor wrapper).
 -drive file=win10.qcow2,format=qcow2,if=virtio,index=0,media=disk,snapshot=on
 ```
 
+> Nowość: engine tworzy teraz per-analizę tymczasowy obraz qcow2 (kopia z backing file) w katalogu `vms/tmp_vms/` by izolować bazowy obraz i umożliwić szybkie rollbacky. Plik tymczasowy jest automatycznie tworzony przy starcie VM i usuwany po zakończeniu analizy (jeśli to możliwe). Jeśli chcesz wyłączyć tę funkcję i używać bezpośrednio `vms/*.qcow2`, ustaw `QEMU_SKIP_TMP_COPY=1` w środowisku.
+
 | Flaga | Znaczenie |
 |-------|-----------|
 | `format=qcow2` | Jawny format — bez auto-detekcji |
@@ -144,6 +146,14 @@ Skrypt instaluje Python 3.11 i Noriben (Process Monitor wrapper).
 | `index=0` | Dysk jako pierwsze urzadzenie (nie CD-ROM) |
 | `media=disk` | Typ: dysk |
 | `snapshot=on` | VM czysta po kazdej analizie (zmiany w RAM) |
+
+Dodatkowe zmienne środowiskowe (opcjonalne):
+
+- `QEMU_ALLOW_NETWORK` (false) — domyślnie sieć VM jest wyłączona; ustaw `true` lub `1` żeby pozwolić na ruch i zapisać PCAP.
+- `QEMU_RLIMIT_VMEM_KB` (8388608) — ograniczenie pamięci w KB dla procesu QEMU (ulimit -v).
+- `QEMU_RLIMIT_CPU_SEC` (900) — limit CPU w sekundach (ulimit -t).
+
+Te ustawienia pomagają izolować analizę i ograniczyć wpływ na host.
 
 ---
 

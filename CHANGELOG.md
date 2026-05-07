@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 Format follows a Keep a Changelog style.
 
 ## [Unreleased]
+- QEMU: utworzono per-analizę tymczasowy obraz qcow2 (backing file) w `vms/tmp_vms/` by izolować bazowy obraz; obraz tymczasowy tworzony jest automatycznie przy starcie VM.
+- QEMU: dodano zmienne środowiskowe `QEMU_ALLOW_NETWORK`, `QEMU_RLIMIT_VMEM_KB` i `QEMU_RLIMIT_CPU_SEC` oraz ograniczenia zasobów (ulimit) dla procesu QEMU.
+- QEMU: po zakończeniu analizy wysyłany jest komend monitorowa `quit` by zamknąć VM, a tymczasowy obraz jest usuwany gdy to możliwe; przegląd i czyszczenie pozostałych tmp obrazów realizuje background prune.
+- Dodano opcję wyłączenia tworzenia kopii tymczasowej: `QEMU_SKIP_TMP_COPY=1`.
 - Dodano skrypt instalacyjny scripts/setup_env.sh — automatyczna instalacja zależności systemowych, tworzenie venv, instalacja paczek Python oraz próbne utworzenie bazy Postgres.
 - Dodano centralną konfigurację (.env/.env.example) i strukturalne logowanie (JSON/plain).
 - Rozdzielono zależności runtime i dev (requirements.txt, requirements-dev.txt).
