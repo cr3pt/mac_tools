@@ -12,16 +12,15 @@ Format follows a Keep a Changelog style.
 - Dodano rotację logów (>5MB) i możliwość cofnięcia tokenu WebSocket poprzez /admin/token/revoke (Redis-backed token store, fallback in-memory).
 - Dodano automatyczny proces konwersji i konserwacji logów oraz audytu:
   - Harmonogram background prune (noriben_soc/maintenance.py) usuwa stare logi i zapisy audytu zgodnie z ustawieniami LOG_RETENTION_DAYS i AUDIT_RETENTION_DAYS.
-  - Dodano endpoint POST /admin/run-setup/prune do natychmiastowego wykonania prune.
+  - Dodano endpoint POST /admin/run-setup/prune do natychmiastowego wykonania prune oraz GET /admin/run-setup/prune/status dla sprawdzenia ostatniego przebiegu.
 - Dodano zarządzanie regułami detekcji (YARA i SIGMA):
   - Endpointy do uploadu plików i pobierania reguł z URL: /admin/rules/* (upload, from_url, list, download, delete)
   - UI w panelu administracyjnym: możliwość dodania reguł przez plik lub URL oraz lista/reguł z opcją pobrania/usunięcia.
-  - Reguły YARA są kompilowane po załadowaniu w rules_manager (jeśli python-yara jest dostępny) dla szybkiego dopasowania w pamięci.
-  - Reguły SIGMA są parsowane (PyYAML jeśli dostępny) i zamieniane na proste wzorce do dopasowania tekstu.
-- Dodano endpointy i UI do zarządzania retencją i statusem konserwacji:
-  - POST /admin/settings/retention — zapisz LOG_RETENTION_DAYS i AUDIT_RETENTION_DAYS
-  - GET /admin/run-setup/prune/status — pokaż wynik ostatniego prune
-  - Dodano reload rules endpoint POST /admin/rules/reload żeby odświeżyć listę reguł bez restartu
+  - Reguły YARA są kompilowane w pamięci po załadowaniu w rules_manager (jeśli python-yara jest dostępny) dla szybkiego dopasowania.
+  - Reguły SIGMA są parsowane (PyYAML jeśli dostępny) i konwertowane na proste wzorce tekstowe używane przez sigma_engine.
+  - Dodano endpoint POST /admin/rules/reload aby wymusić natychmiastowe przeładowanie reguł.
+- Dodano flagę środowiskową NORIBEN_DISABLE_EXTERNAL (ENV var) do wyłączania zapytań zewnętrznych i narzędzi systemowych podczas testów/CI. Gdy ustawiona, pipeline pomija VirusTotal/OTX/ClamAV, wyłącza pluginy i pomija analizę Linux/QEMU.
+- Testy jednostkowe: instrukcje testowania uaktualnione w README. Lokalnie uruchomione testy jednostkowe przeszły: 2 passed (uruchomione z NORIBEN_DISABLE_EXTERNAL=1 w .venv).
 
 
 ## [v6.8-final-fix9] - 2026-05-05

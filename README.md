@@ -436,6 +436,36 @@ Notes on rule usage
 
 Maintenance / Retention
 
+Testing
+
+For reliable unit testing in a developer environment create a virtualenv and install dev dependencies:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python3 -m pip install -U pip setuptools wheel
+python3 -m pip install -r requirements-dev.txt
+```
+
+By default some tests and features call external tools (VirusTotal, OTX, ClamAV, QEMU, dtrace/strace). To run unit tests only and disable external calls set:
+
+```bash
+export NORIBEN_DISABLE_EXTERNAL=1
+pytest -q
+```
+
+Integration tests require additional system packages (yara, requests, libpq-dev, qemu, docker) and may require sudo to install tools. See the Installer section above for recommended system packages.
+
+Rules & Runtime
+
+Rules (YARA and SIGMA) are stored under rules/yara and rules/sigma. The admin UI allows upload, fetch-from-URL, download, delete and reload. When possible YARA rules are compiled in-memory for fast scanning and SIGMA rules are parsed into simple patterns. To force a rescan without restarting the server, call POST /admin/rules/reload or use the Reload Rules button in the admin UI.
+
+Maintenance notes
+
+- Background prune runs every 24h by default and removes logs and audit records older than LOG_RETENTION_DAYS and AUDIT_RETENTION_DAYS.
+- You can trigger an immediate prune via POST /admin/run-setup/prune and check last status at GET /admin/run-setup/prune/status.
+
+
 - POST /admin/settings/retention — set LOG_RETENTION_DAYS and AUDIT_RETENTION_DAYS (persisted to .env)
 - POST /admin/run-setup/prune — immediate prune of old logs and audit records
 - GET /admin/run-setup/prune/status — status of last automatic prune (last run timestamp and counts)
