@@ -157,7 +157,14 @@ Te ustawienia pomagają izolować analizę i ograniczyć wpływ na host.
 
 Proxy sieciowy: dodano prosty HTTP/HTTPS proxy z allowlistą (noriben_soc/core/net_proxy.py). Proxy obsługuje metodę CONNECT oraz zwykłe żądania HTTP. Domyślnie nasłuchuje na 127.0.0.1:3128 i akceptuje hosty z listy NET_PROXY_ALLOWLIST (np. "example.com,updates.vendor.local").
 
-Aby użyć proxy z VM: skonfiguruj przeglądarkę w VM, albo ustaw systemowy HTTP proxy na adres hosta (host może być 10.0.2.2 z usernetem QEMU). W przyszłości planowane jest automatyczne wystawienie WPAD i DHCP — na razie proxy uruchamiany jest po stronie hosta i wymaga ręcznej konfiguracji gościa.
+Dodatkowo dostępne są usługi WPAD/PAC oraz minimalny DNS responder (wymaga opcjonalnej biblioteki dnslib). Kiedy QEMU_ALLOW_NETWORK=1, qemu_engine automatycznie spróbuje uruchomić lokalny proxy, serwer WPAD (pod /wpad.dat) i DNS responder (odpytujący o "wpad"), aby ułatwić konfigurację gościa.
+
+Ustawienia opcjonalne:
+- NET_PROXY_WPAD_PORT (default 3129) — port WPAD/PAC
+- NET_PROXY_WPAD_NAME (default "wpad") — nazwa odpowiadana przez prosty DNS
+- NET_PROXY_WPAD_ADDR (default 10.0.2.2) — adres przypisany w odpowiedzi DNS (najczęściej host bridge)
+
+Aby użyć proxy z VM: skonfiguruj przeglądarkę w VM, albo ustaw systemowy HTTP proxy na adres hosta (host może być 10.0.2.2 z usernetem QEMU). Alternatywnie uruchom QEMU z QEMU_ALLOW_NETWORK=1 — wtedy lokalny proxy + WPAD + DNS są uruchamiane automatycznie i qemu_engine wypisze porty w logu. W przyszłości można dodać WPAD/DHCP automatyczną konfigurację, ale teraz proces wymaga, by VM korzystał z hosta jako gateway/proxy.
 
 
 ---

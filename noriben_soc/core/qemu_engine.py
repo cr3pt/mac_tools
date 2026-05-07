@@ -36,9 +36,30 @@ async def run_dynamic_analysis(sample: Path, vm: str = 'win10', timeout: int = 3
 
     # Sieć: domyślnie wyłączona chyba że explicite ustawione
     allow_net = os.getenv('QEMU_ALLOW_NETWORK', 'false').lower() in ('1', 'true', 'yes')
+    proxy_server = None
+    wpad_server = None
+    dns_server = None
     if allow_net:
         netdev = (f'user,id={cfg["netdev_id"]},restrict=on,'
                   f'smb={SHARED}')
+        # Start host-side proxy and WPAD/DNS helpers
+        try:
+            from .net_proxy import start_proxy, stop_proxy
+            from .wpad import start_wpad, stop_wpad
+            from .simple_dns import start_dns, stop_dns
+            # start proxy and wpad/dns on localhost
+            proxy_server = await start_proxy()
+            try:
+                wpad_server = await start_wpad()
+            except Exception:
+                wpad_server = None
+            try:
+                dns_server = await start_dns()
+            except Exception:
+                dns_server = None
+        except Exception:
+            # If imports fail, continue without proxy
+            proxy_server = None
     else:
         netdev = None
 
@@ -126,6 +147,23 @@ async def run_dynamic_analysis(sample: Path, vm: str = 'win10', timeout: int = 3
             except Exception:
                 pass
 
+            # stop helpers if started
+            try:
+                if wpad_server:
+                    await stop_wpad()
+            except Exception:
+                pass
+            try:
+                if dns_server:
+                    await stop_dns(dns_server)
+            except Exception:
+                pass
+            try:
+                if proxy_server:
+                    await stop_proxy()
+            except Exception:
+                pass
+
             return data
 
     # Timeout — przynajmniej parsuj PCAP jesli jest
@@ -140,6 +178,23 @@ async def run_dynamic_analysis(sample: Path, vm: str = 'win10', timeout: int = 3
         pass
     try:
         tmp_qcow2.unlink()
+    except Exception:
+        pass
+
+    # stop helpers if started
+    try:
+        if wpad_server:
+            await stop_wpad()
+    except Exception:
+        pass
+    try:
+        if dns_server:
+            await stop_dns(dns_server)
+    except Exception:
+        pass
+    try:
+        if proxy_server:
+            await stop_proxy()
     except Exception:
         pass
     return result

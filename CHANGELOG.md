@@ -26,7 +26,9 @@ Format follows a Keep a Changelog style.
 - Dodano flagę środowiskową NORIBEN_DISABLE_EXTERNAL (ENV var) do wyłączania zapytań zewnętrznych i narzędzi systemowych podczas testów/CI. Gdy ustawiona, pipeline pomija VirusTotal/OTX/ClamAV, wyłącza pluginy i pomija analizę Linux/QEMU.
 - Testy jednostkowe: instrukcje testowania uaktualnione w README. Lokalnie uruchomione testy jednostkowe przeszły: 2 passed (uruchomione z NORIBEN_DISABLE_EXTERNAL=1 w .venv).
 - Dodano prosty HTTP/HTTPS proxy z allowlistą (noriben_soc/core/net_proxy.py) do kontrolowania ruchu wychodzącego z VM oraz dokumentację korzystania.
-- Dodano workflow GitHub Actions (.github/workflows/integration.yml) instalujący qemu/yara i uruchamiający testy integracyjne (pytest -k integration).
+- Dodano prosty WPAD/PAC serwer (noriben_soc/core/wpad.py) oraz minimalny DNS responder (noriben_soc/core/simple_dns.py — wymaga dnslib), które mogą automatycznie wystartować gdy QEMU_ALLOW_NETWORK=1.
+- Dodano workflow GitHub Actions (.github/workflows/integration.yml) instalujący qemu/yara i uruchamiający testy integracyjne (pytest -k integration). Zaktualizowano workflow o macOS matrix, cache venv i conditional instally dla zależności systemowych.
+
 
 
 ## [v6.8-final-fix9] - 2026-05-05

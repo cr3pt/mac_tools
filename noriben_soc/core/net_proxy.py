@@ -46,6 +46,10 @@ async def handle_client(reader, writer):
             host, port = target.split(':') if ':' in target else (target, 443)
             if not _allowed(host):
                 LOG.warning('Blocked CONNECT to %s from %s', host, peer)
+                try:
+                    _record_blocked()
+                except Exception:
+                    pass
                 writer.write(b'HTTP/1.1 403 Forbidden\r\n\r\n')
                 await writer.drain()
                 return
@@ -119,6 +123,17 @@ def _allowed(hostname: str) -> bool:
     return False
 
 _server = None
+_allowed_count = 0
+_blocked_count = 0
+
+# Optional Prometheus metrics
+try:
+    from prometheus_client import Counter
+    PROM_METRICS = True
+    PROXY_ALLOWED = Counter('noriben_proxy_allowed_total', 'Allowed proxy requests')
+    PROXY_BLOCKED = Counter('noriben_proxy_blocked_total', 'Blocked proxy requests')
+except Exception:
+    PROM_METRICS = False
 
 async def start_proxy(bind_host: str = BIND_HOST, port: int = PORT):
     global _server
@@ -135,6 +150,18 @@ async def stop_proxy():
     _server.close()
     await _server.wait_closed()
     _server = None
+
+def _record_allowed():
+    global _allowed_count
+    _allowed_count += 1
+    if PROM_METRICS:
+        PROXY_ALLOWED.inc()
+
+def _record_blocked():
+    global _blocked_count
+    _blocked_count += 1
+    if PROM_METRICS:
+        PROXY_BLOCKED.inc()
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
