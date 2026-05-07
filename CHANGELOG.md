@@ -10,6 +10,12 @@ Format follows a Keep a Changelog style.
 - Dodano panel administracyjny webowy (/admin) z Basic Auth, asynchronicznym uruchamianiem skryptu setup oraz strumieniowaniem logów przez WebSocket.
 - Dodano możliwość pobrania logów z wykonanych zadań oraz anulowania (cancel) zadań.
 - Dodano rotację logów (>5MB) i możliwość cofnięcia tokenu WebSocket poprzez /admin/token/revoke (Redis-backed token store, fallback in-memory).
+- Dodano automatyczny proces konwersji i konserwacji logów oraz audytu:
+  - Harmonogram background prune (noriben_soc/maintenance.py) usuwa stare logi i zapisy audytu zgodnie z ustawieniami LOG_RETENTION_DAYS i AUDIT_RETENTION_DAYS.
+  - Dodano endpoint POST /admin/run-setup/prune do natychmiastowego wykonania prune.
+- Dodano zarządzanie regułami detekcji (YARA i SIGMA):
+  - Endpointy do uploadu plików i pobierania reguł z URL: /admin/rules/* (upload, from_url, list, download, delete)
+  - UI w panelu administracyjnym: możliwość dodania reguł przez plik lub URL oraz lista/reguł z opcją pobrania/usunięcia.
 
 
 ## [v6.8-final-fix9] - 2026-05-05

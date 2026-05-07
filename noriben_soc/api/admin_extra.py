@@ -58,3 +58,146 @@ async def prune_now(user: str = Depends(admin_required), days: int = None):
     removed_logs = maintenance.prune_logs_older_than(d_logs)
     removed_db = maintenance.prune_audit_older_than(d_audit)
     return {'ok': True, 'removed_logs': removed_logs, 'removed_db': removed_db}
+
+
+@router.post('/settings/retention')
+async def set_retention(payload: dict, user: str = Depends(admin_required)):
+    """Set LOG_RETENTION_DAYS and AUDIT_RETENTION_DAYS via admin UI and persist to .env."""
+    from ..config import save_env_file, update_settings, settings as cfg
+    try:
+        logs = int(payload.get('LOG_RETENTION_DAYS', payload.get('logs', getattr(cfg, 'LOG_RETENTION_DAYS', 30))))
+        audit = int(payload.get('AUDIT_RETENTION_DAYS', payload.get('audit', getattr(cfg, 'AUDIT_RETENTION_DAYS', 90))))
+    except Exception:
+        raise HTTPException(status_code=400, detail='invalid values')
+    save_env_file({'LOG_RETENTION_DAYS': logs, 'AUDIT_RETENTION_DAYS': audit})
+    update_settings({'LOG_RETENTION_DAYS': logs, 'AUDIT_RETENTION_DAYS': audit})
+    return {'ok': True, 'LOG_RETENTION_DAYS': logs, 'AUDIT_RETENTION_DAYS': audit}
+
+
+@router.get('/settings')
+async def get_settings(user: str = Depends(admin_required)):
+    from ..config import get_settings_dict
+    return get_settings_dict()
+
+
+@router.get('/rules/list')
+async def list_rules(user: str = Depends(admin_required)):
+    import pathlib
+    base = pathlib.Path('rules')
+    out = {'yara': [], 'sigma': []}
+    for t in ('yara','sigma'):
+        p = base / t
+        p.mkdir(parents=True, exist_ok=True)
+        for f in sorted(p.iterdir()):
+            if f.is_file():
+                out[t].append({'name': f.name, 'size': f.stat().st_size})
+    return out
+
+
+@router.post('/rules/yara/upload')
+async def upload_yara(file: 'UploadFile' , user: str = Depends(admin_required)):
+    from fastapi import UploadFile, File
+    import pathlib
+    import shutil
+    p = pathlib.Path('rules/yara')
+    p.mkdir(parents=True, exist_ok=True)
+    name = pathlib.Path((getattr(file, 'filename', '') or '')).name or f'yara_{uuid.uuid4().hex}.yara'
+    dest = p / name
+    with open(dest, 'wb') as wf:
+        shutil.copyfileobj(file.file, wf)
+    return {'ok': True, 'path': str(dest)}
+
+
+@router.post('/rules/yara/from_url')
+async def yara_from_url(payload: dict, user: str = Depends(admin_required)):
+    url = (payload or {}).get('url')
+    if not url:
+        raise HTTPException(status_code=400, detail='missing url')
+    import pathlib, uuid, urllib.request, urllib.parse
+    p = pathlib.Path('rules/yara')
+    p.mkdir(parents=True, exist_ok=True)
+    try:
+        resp = urllib.request.urlopen(url, timeout=15)
+        data = resp.read()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f'fetch failed: {e}')
+    name = pathlib.Path(urllib.parse.urlparse(url).path).name or f'yara_{uuid.uuid4().hex}.yara'
+    dest = p / name
+    with open(dest, 'wb') as wf:
+        wf.write(data)
+    return {'ok': True, 'path': str(dest)}
+
+
+@router.post('/rules/sigma/upload')
+async def upload_sigma(file: 'UploadFile' , user: str = Depends(admin_required)):
+    from fastapi import UploadFile, File
+    import pathlib
+    import shutil
+    p = pathlib.Path('rules/sigma')
+    p.mkdir(parents=True, exist_ok=True)
+    name = pathlib.Path((getattr(file, 'filename', '') or '')).name or f'sigma_{uuid.uuid4().hex}.yml'
+    dest = p / name
+    with open(dest, 'wb') as wf:
+        shutil.copyfileobj(file.file, wf)
+    return {'ok': True, 'path': str(dest)}
+
+
+@router.post('/rules/sigma/from_url')
+async def sigma_from_url(payload: dict, user: str = Depends(admin_required)):
+    url = (payload or {}).get('url')
+    if not url:
+        raise HTTPException(status_code=400, detail='missing url')
+    import pathlib, uuid, urllib.request, urllib.parse
+    p = pathlib.Path('rules/sigma')
+    p.mkdir(parents=True, exist_ok=True)
+    try:
+        resp = urllib.request.urlopen(url, timeout=15)
+        data = resp.read()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f'fetch failed: {e}')
+    name = pathlib.Path(urllib.parse.urlparse(url).path).name or f'sigma_{uuid.uuid4().hex}.yml'
+    dest = p / name
+    with open(dest, 'wb') as wf:
+        wf.write(data)
+    return {'ok': True, 'path': str(dest)}
+
+
+@router.get('/rules/download/{rtype}/{name}')
+async def download_rule(rtype: str, name: str, user: str = Depends(admin_required)):
+    import pathlib
+    from fastapi.responses import FileResponse
+    base = pathlib.Path('rules')
+    if rtype not in ('yara','sigma'):
+        raise HTTPException(status_code=400, detail='invalid type')
+    p = base / rtype / name
+    if not p.exists():
+        raise HTTPException(status_code=404, detail='not found')
+    return FileResponse(str(p), media_type='application/octet-stream', filename=name)
+
+
+@router.delete('/rules/{rtype}/{name}')
+async def delete_rule(rtype: str, name: str, user: str = Depends(admin_required)):
+    import pathlib
+    base = pathlib.Path('rules')
+    if rtype not in ('yara','sigma'):
+        raise HTTPException(status_code=400, detail='invalid type')
+    p = base / rtype / name
+    if not p.exists():
+        raise HTTPException(status_code=404, detail='not found')
+    try:
+        p.unlink()
+    except Exception:
+        raise HTTPException(status_code=500, detail='delete failed')
+    return {'ok': True}
+
+
+@router.post('/run-setup/prune')
+async def prune_now(user: str = Depends(admin_required), days: int = None):
+    """Trigger immediate pruning of logs and audit records. If `days` provided, use it for both logs and audit."""
+    from .. import maintenance
+    from ..config import settings as cfg
+    d_logs = int(days) if days is not None else int(getattr(cfg, 'LOG_RETENTION_DAYS', 30))
+    d_audit = int(days) if days is not None else int(getattr(cfg, 'AUDIT_RETENTION_DAYS', 90))
+    removed_logs = maintenance.prune_logs_older_than(d_logs)
+    removed_db = maintenance.prune_audit_older_than(d_audit)
+    return {'ok': True, 'removed_logs': removed_logs, 'removed_db': removed_db}

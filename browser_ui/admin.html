@@ -131,6 +131,61 @@ async function pruneNow(){
   listTasks();
 }
 
+async function uploadYara(){
+  const f = document.getElementById('yara-file').files[0];
+  if(!f){ alert('Choose a file'); return; }
+  const fd = new FormData(); fd.append('file', f);
+  const r = await fetch('/admin/rules/yara/upload',{method:'POST', body: fd});
+  const j = await r.json(); document.getElementById('out').textContent += '\nUpload YARA: '+JSON.stringify(j);
+  listRules();
+}
+async function fetchYara(){
+  const url = document.getElementById('yara-url').value;
+  if(!url){ alert('Enter URL'); return; }
+  const r = await fetch('/admin/rules/yara/from_url',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+  const j = await r.json(); document.getElementById('out').textContent += '\nFetch YARA: '+JSON.stringify(j);
+  listRules();
+}
+async function uploadSigma(){
+  const f = document.getElementById('sigma-file').files[0];
+  if(!f){ alert('Choose a file'); return; }
+  const fd = new FormData(); fd.append('file', f);
+  const r = await fetch('/admin/rules/sigma/upload',{method:'POST', body: fd});
+  const j = await r.json(); document.getElementById('out').textContent += '\nUpload SIGMA: '+JSON.stringify(j);
+  listRules();
+}
+async function fetchSigma(){
+  const url = document.getElementById('sigma-url').value;
+  if(!url){ alert('Enter URL'); return; }
+  const r = await fetch('/admin/rules/sigma/from_url',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+  const j = await r.json(); document.getElementById('out').textContent += '\nFetch SIGMA: '+JSON.stringify(j);
+  listRules();
+}
+
+async function listRules(){
+  const r = await fetch('/admin/rules/list');
+  const j = await r.json();
+  const el = document.getElementById('rules-list');
+  let html = '';
+  html += '<div class="grid grid-cols-2 gap-4">';
+  for(const t of ['yara','sigma']){
+    html += `<div><h4 class="text-slate-300">${t.toUpperCase()}</h4><ul>`;
+    for(const f of j[t]){
+      html += `<li class="flex gap-2 items-center"><span class="font-mono">${f.name}</span> <a class="px-2 py-1 bg-slate-700 rounded text-xs" href="/admin/rules/download/${t}/${encodeURIComponent(f.name)}">Download</a> <button onclick="deleteRule('${t}','${f.name}')" class="px-2 py-1 bg-rose-700 rounded text-xs">Delete</button></li>`;
+    }
+    html += '</ul></div>';
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+async function deleteRule(type,name){
+  if(!confirm('Delete rule '+name+'?')) return;
+  const r = await fetch(`/admin/rules/${type}/${encodeURIComponent(name)}`,{method:'DELETE'});
+  const j = await r.json(); document.getElementById('out').textContent += '\nDelete rule: '+JSON.stringify(j);
+  listRules();
+}
+
 load();
 </script>
 </body>

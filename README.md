@@ -410,4 +410,24 @@ python -m pytest tests/test_pipeline.py::test_static -q
 
 ---
 
+
+## Rules management (YARA & SIGMA)
+
+Admin panel provides a simple management UI and API for adding detection rules used during static and dynamic analysis. Rules are stored under repository-local paths:
+
+- rules/yara/ — YARA rules (.yar, .yara)
+- rules/sigma/ — SIGMA rules (.yml)
+
+Available admin endpoints (require ADMIN credentials set in .env):
+
+- POST /admin/rules/yara/upload — form file upload (field 'file')
+- POST /admin/rules/yara/from_url — JSON {"url": "https://.../rule.yar"}
+- POST /admin/rules/sigma/upload — form file upload
+- POST /admin/rules/sigma/from_url — JSON {"url": "https://.../rule.yml"}
+- GET /admin/rules/list — list available rules
+- GET /admin/rules/download/{type}/{name} — download file
+- DELETE /admin/rules/{type}/{name} — delete file
+
+The admin UI (http://localhost:8000/admin) exposes an interface to upload/fetch rules and manage them.
+
 *Noriben SOC v6.8 — Cr3pT — 2026*
