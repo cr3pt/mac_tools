@@ -16,6 +16,8 @@ Format follows a Keep a Changelog style.
 - Dodano zarządzanie regułami detekcji (YARA i SIGMA):
   - Endpointy do uploadu plików i pobierania reguł z URL: /admin/rules/* (upload, from_url, list, download, delete)
   - UI w panelu administracyjnym: możliwość dodania reguł przez plik lub URL oraz lista/reguł z opcją pobrania/usunięcia.
+  - Reguły YARA są kompilowane po załadowaniu w rules_manager (jeśli python-yara jest dostępny) dla szybkiego dopasowania w pamięci.
+  - Reguły SIGMA są parsowane (PyYAML jeśli dostępny) i zamieniane na proste wzorce do dopasowania tekstu.
 - Dodano endpointy i UI do zarządzania retencją i statusem konserwacji:
   - POST /admin/settings/retention — zapisz LOG_RETENTION_DAYS i AUDIT_RETENTION_DAYS
   - GET /admin/run-setup/prune/status — pokaż wynik ostatniego prune

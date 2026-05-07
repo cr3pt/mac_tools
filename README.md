@@ -429,6 +429,11 @@ Available admin endpoints (require ADMIN credentials set in .env):
 - DELETE /admin/rules/{type}/{name} — delete file
 - POST /admin/rules/reload — force re-scan of rules directory (returns counts and sample files)
 
+Notes on rule usage
+
+- When possible, YARA rules are compiled in memory after upload/reload (requires python-yara). If python-yara is not installed, rules are still stored on disk and scanned per-request as a fallback.
+- SIGMA rules are parsed using PyYAML when available to extract detection strings. If PyYAML is not present, a conservative string-extraction fallback is used.
+
 Maintenance / Retention
 
 - POST /admin/settings/retention — set LOG_RETENTION_DAYS and AUDIT_RETENTION_DAYS (persisted to .env)
