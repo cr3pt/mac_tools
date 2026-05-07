@@ -4,6 +4,7 @@ All notable changes to this project are documented in this file.
 Format follows a Keep a Changelog style.
 
 ## [Unreleased]
+- Static analysis: added noriben_soc/core/static_analysis.py — file analysis helpers (entropy, strings extraction, PE/ELF parsing when libraries present, SHA256, basic YARA matching against rules/yara). Adds imphash extraction (pefile) and ELF section inspection (lief) when available.
 - QEMU: utworzono per-analizę tymczasowy obraz qcow2 (backing file) w `vms/tmp_vms/` by izolować bazowy obraz; obraz tymczasowy tworzony jest automatycznie przy starcie VM.
 - QEMU: dodano zmienne środowiskowe `QEMU_ALLOW_NETWORK`, `QEMU_RLIMIT_VMEM_KB` i `QEMU_RLIMIT_CPU_SEC` oraz ograniczenia zasobów (ulimit) dla procesu QEMU.
 - QEMU: po zakończeniu analizy wysyłany jest komend monitorowa `quit` by zamknąć VM, a tymczasowy obraz jest usuwany gdy to możliwe; przegląd i czyszczenie pozostałych tmp obrazów realizuje background prune.
