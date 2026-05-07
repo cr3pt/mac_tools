@@ -1,4 +1,4 @@
-import asyncio, json, shutil, os, time
+import asyncio, json, shutil, os, time, shlex, subprocess
 from pathlib import Path
 from .network_analyzer import analyze_pcap
 
@@ -22,11 +22,25 @@ async def run_dynamic_analysis(sample: Path, vm: str = 'win10', timeout: int = 3
     accel_flag = ['-accel', 'kvm'] if accel == 'kvm' else ['-accel', 'tcg,thread=multi']
     pcap_file  = SHARED / 'results' / f'{sample.stem}_{vm}.pcap'
 
-    # Sieć: tap z tcpdump przechwytujacym cały ruch VM
-    # restrict=on = brak dostepu do hosta/LAN (bezpieczenstwo)
-    # smb= = udostepnia /shared jako C:\shared w VM (Windows)
-    netdev = (f'user,id={cfg["netdev_id"]},restrict=on,'
-              f'smb={SHARED}')
+    # Przygotuj tymczasową kopię qcow2 (backing file) by izolować bazowy obraz
+    tmp_dir = SHARED / 'tmp_vms'
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = int(time.time())
+    tmp_qcow2 = tmp_dir / f"{cfg['qcow2']}.{sample.stem}.{timestamp}.qcow2"
+
+    # szybkie stworzenie pliku z backingiem (szybsze niż pełna kopia)
+    try:
+        subprocess.run(['qemu-img', 'create', '-f', 'qcow2', '-b', str(qcow2), str(tmp_qcow2)], check=True)
+    except Exception as e:
+        return _empty(vm, f'failed creating tmp qcow2: {e}')
+
+    # Sieć: domyślnie wyłączona chyba że explicite ustawione
+    allow_net = os.getenv('QEMU_ALLOW_NETWORK', 'false').lower() in ('1', 'true', 'yes')
+    if allow_net:
+        netdev = (f'user,id={cfg["netdev_id"]},restrict=on,'
+                  f'smb={SHARED}')
+    else:
+        netdev = None
 
     cmd = [
         'qemu-system-x86_64',
@@ -35,10 +49,19 @@ async def run_dynamic_analysis(sample: Path, vm: str = 'win10', timeout: int = 3
         '-cpu', 'max',
         '-smp', 'cores=4,threads=1',
         '-m', '4096',
-        '-drive', f'file={qcow2},format=qcow2,if=virtio,index=0,media=disk,snapshot=on',
-        '-netdev', netdev,
-        '-device', f'virtio-net-pci,netdev={cfg["netdev_id"]}',
-        '-object', f'filter-dump,id=dump{cfg["vnc"]},netdev={cfg["netdev_id"]},file={pcap_file}',
+        '-drive', f'file={tmp_qcow2},format=qcow2,if=virtio,index=0,media=disk',
+    ]
+
+    if netdev:
+        cmd += [
+            '-netdev', netdev,
+            '-device', f'virtio-net-pci,netdev={cfg["netdev_id"]}',
+            '-object', f'filter-dump,id=dump{cfg["vnc"]},netdev={cfg["netdev_id"]},file={pcap_file}',
+        ]
+    else:
+        pcap_file = None
+
+    cmd += [
         '-vnc', f'0.0.0.0:{cfg["vnc"]},password',
         '-virtfs', f'local,path={SHARED},mount_tag=shared,security_model=none',
         '-monitor', f'tcp:0.0.0.0:{cfg["mon_port"]},server,nowait',
@@ -47,13 +70,25 @@ async def run_dynamic_analysis(sample: Path, vm: str = 'win10', timeout: int = 3
         '-daemonize',
     ] + accel_flag
 
-    proc = await asyncio.create_subprocess_exec(
-        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    # Uruchom QEMU w shellu by móc ustawić ograniczenia zasobów (ulimit)
+    mem_kb = int(os.getenv('QEMU_RLIMIT_VMEM_KB', str(8 * 1024 * 1024)))
+    cpu_sec = int(os.getenv('QEMU_RLIMIT_CPU_SEC', '900'))
+    # zbuduj command string bezpiecznie
+    cmd_str = ' '.join(shlex.quote(p) for p in cmd)
+    shell_cmd = f'ulimit -v {mem_kb} -t {cpu_sec} && exec {cmd_str}'
+
+    proc = await asyncio.create_subprocess_shell(shell_cmd,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     _, stderr = await proc.communicate()
     if proc.returncode != 0:
+        # jeśli qemu nie wystartował, spróbuj usunąć tmp
+        try:
+            tmp_qcow2.unlink()
+        except Exception:
+            pass
         return _empty(vm, stderr.decode()[:500])
 
-    # Ustaw haslo VNC przez monitor
+    # Ustaw haslo VNC przez monitor (może nie działać od razu)
     await asyncio.sleep(3)
     await _set_vnc_password(cfg['mon_port'], 'noriben')
 
@@ -78,14 +113,35 @@ async def run_dynamic_analysis(sample: Path, vm: str = 'win10', timeout: int = 3
             data = json.loads(result_file.read_text())
             data['vm'] = vm
             # Analizuj PCAP
-            if pcap_file.exists():
+            if pcap_file and pcap_file.exists():
                 data['network_iocs'] = analyze_pcap(pcap_file)
+
+            # Po uzyskaniu wyniku spróbuj zatrzymać VM i usunąć tymczasowy obraz
+            try:
+                await _monitor_command(cfg['mon_port'], 'quit')
+            except Exception:
+                pass
+            try:
+                tmp_qcow2.unlink()
+            except Exception:
+                pass
+
             return data
 
     # Timeout — przynajmniej parsuj PCAP jesli jest
     result = _empty(vm, 'timeout')
-    if pcap_file.exists():
+    if pcap_file and pcap_file.exists():
         result['network_iocs'] = analyze_pcap(pcap_file)
+
+    # spróbuj wyłączyć VM i oczyścić tmp image
+    try:
+        await _monitor_command(cfg['mon_port'], 'quit')
+    except Exception:
+        pass
+    try:
+        tmp_qcow2.unlink()
+    except Exception:
+        pass
     return result
 
 async def _set_vnc_password(mon_port: int, password: str):
@@ -94,6 +150,19 @@ async def _set_vnc_password(mon_port: int, password: str):
             asyncio.open_connection('127.0.0.1', mon_port), timeout=5)
         await reader.read(1024)
         writer.write(f'change vnc password {password}\n'.encode())
+        await writer.drain()
+        writer.close()
+    except Exception:
+        pass
+
+async def _monitor_command(mon_port: int, command: str):
+    """Send a command to QEMU monitor (e.g., 'quit')"""
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection('127.0.0.1', mon_port), timeout=5)
+        # consume banner
+        await reader.read(1024)
+        writer.write(f'{command}\n'.encode())
         await writer.drain()
         writer.close()
     except Exception:
