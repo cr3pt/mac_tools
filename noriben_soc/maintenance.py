@@ -1,7 +1,12 @@
 import pathlib
 import time
 import asyncio
-from typing import Tuple
+from typing import Tuple, Optional
+
+# status
+_last_prune_time: Optional[float] = None
+_last_removed_logs: int = 0
+_last_removed_db: int = 0
 
 
 def prune_logs_older_than(days: int) -> int:
@@ -49,6 +54,7 @@ def prune_audit_older_than(days: int) -> int:
 
 async def prune_loop(interval_seconds: int = 24 * 3600):
     """Background loop that prunes logs and audit periodically."""
+    global _last_prune_time, _last_removed_logs, _last_removed_db
     from .config import settings as cfg
     while True:
         try:
@@ -56,10 +62,23 @@ async def prune_loop(interval_seconds: int = 24 * 3600):
             days_audit = int(getattr(cfg, 'AUDIT_RETENTION_DAYS', 90))
             removed_logs = prune_logs_older_than(days_logs)
             removed_db = prune_audit_older_than(days_audit)
+            _last_removed_logs = removed_logs
+            _last_removed_db = removed_db
+            _last_prune_time = time.time()
         except Exception:
-            removed_logs = removed_db = 0
+            # keep previous values
+            pass
         # sleep interval
         try:
             await asyncio.sleep(int(interval_seconds))
         except asyncio.CancelledError:
             break
+
+
+def get_prune_status() -> dict:
+    """Return last prune timestamp and counts."""
+    return {
+        'last_prune_time': _last_prune_time,
+        'last_removed_logs': _last_removed_logs,
+        'last_removed_db': _last_removed_db,
+    }

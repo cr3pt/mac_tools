@@ -427,7 +427,14 @@ Available admin endpoints (require ADMIN credentials set in .env):
 - GET /admin/rules/list — list available rules
 - GET /admin/rules/download/{type}/{name} — download file
 - DELETE /admin/rules/{type}/{name} — delete file
+- POST /admin/rules/reload — force re-scan of rules directory (returns counts and sample files)
 
-The admin UI (http://localhost:8000/admin) exposes an interface to upload/fetch rules and manage them.
+Maintenance / Retention
+
+- POST /admin/settings/retention — set LOG_RETENTION_DAYS and AUDIT_RETENTION_DAYS (persisted to .env)
+- POST /admin/run-setup/prune — immediate prune of old logs and audit records
+- GET /admin/run-setup/prune/status — status of last automatic prune (last run timestamp and counts)
+
+The admin UI (http://localhost:8000/admin) exposes an interface to upload/fetch rules, manage retention, trigger prune and reload rules.
 
 *Noriben SOC v6.8 — Cr3pT — 2026*

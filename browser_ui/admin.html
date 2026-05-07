@@ -129,6 +129,17 @@ async function pruneNow(){
   const j = await r.json();
   document.getElementById('out').textContent += '\nPrune result: '+JSON.stringify(j);
   listTasks();
+  getPruneStatus();
+}
+
+async function getPruneStatus(){
+  const r = await fetch('/admin/run-setup/prune/status');
+  const j = await r.json();
+  const el = document.getElementById('prune-status');
+  if(!j.ok){ el.textContent = 'error'; return; }
+  const s = j.status || {};
+  const t = s.last_prune_time ? new Date(s.last_prune_time*1000).toLocaleString() : 'never';
+  el.textContent = `last_prune: ${t}, removed_logs: ${s.last_removed_logs}, removed_db: ${s.last_removed_db}`;
 }
 
 async function uploadYara(){
@@ -186,6 +197,21 @@ async function deleteRule(type,name){
   listRules();
 }
 
+async function saveRetention(){
+  const logs = document.getElementById('ret_logs').value || '';
+  const audit = document.getElementById('ret_audit').value || '';
+  const r = await fetch('/admin/settings/retention',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({LOG_RETENTION_DAYS: logs, AUDIT_RETENTION_DAYS: audit})});
+  const j = await r.json(); document.getElementById('out').textContent += '\nSave retention: '+JSON.stringify(j);
+}
+
+async function reloadRules(){
+  const r = await fetch('/admin/rules/reload',{method:'POST'});
+  const j = await r.json(); document.getElementById('out').textContent += '\nReload rules: '+JSON.stringify(j);
+  listRules();
+}
+
+// init
+getPruneStatus();
 load();
 </script>
 </body>

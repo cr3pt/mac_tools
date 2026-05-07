@@ -60,6 +60,13 @@ async def prune_now(user: str = Depends(admin_required), days: int = None):
     return {'ok': True, 'removed_logs': removed_logs, 'removed_db': removed_db}
 
 
+@router.get('/run-setup/prune/status')
+async def prune_status(user: str = Depends(admin_required)):
+    from .. import maintenance
+    st = maintenance.get_prune_status()
+    return {'ok': True, 'status': st}
+
+
 @router.post('/settings/retention')
 async def set_retention(payload: dict, user: str = Depends(admin_required)):
     """Set LOG_RETENTION_DAYS and AUDIT_RETENTION_DAYS via admin UI and persist to .env."""
@@ -125,6 +132,12 @@ async def yara_from_url(payload: dict, user: str = Depends(admin_required)):
     dest = p / name
     with open(dest, 'wb') as wf:
         wf.write(data)
+    # try reload rules manager if available
+    try:
+        from .. import rules_manager
+        rules_manager.reload_rules()
+    except Exception:
+        pass
     return {'ok': True, 'path': str(dest)}
 
 
@@ -139,6 +152,12 @@ async def upload_sigma(file: 'UploadFile' , user: str = Depends(admin_required))
     dest = p / name
     with open(dest, 'wb') as wf:
         shutil.copyfileobj(file.file, wf)
+    # try reload
+    try:
+        from .. import rules_manager
+        rules_manager.reload_rules()
+    except Exception:
+        pass
     return {'ok': True, 'path': str(dest)}
 
 
@@ -159,6 +178,11 @@ async def sigma_from_url(payload: dict, user: str = Depends(admin_required)):
     dest = p / name
     with open(dest, 'wb') as wf:
         wf.write(data)
+    try:
+        from .. import rules_manager
+        rules_manager.reload_rules()
+    except Exception:
+        pass
     return {'ok': True, 'path': str(dest)}
 
 
@@ -188,7 +212,23 @@ async def delete_rule(rtype: str, name: str, user: str = Depends(admin_required)
         p.unlink()
     except Exception:
         raise HTTPException(status_code=500, detail='delete failed')
+    # attempt reload
+    try:
+        from .. import rules_manager
+        rules_manager.reload_rules()
+    except Exception:
+        pass
     return {'ok': True}
+
+
+@router.post('/rules/reload')
+async def reload_rules(user: str = Depends(admin_required)):
+    try:
+        from .. import rules_manager
+        res = rules_manager.reload_rules()
+        return {'ok': True, 'result': res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post('/run-setup/prune')
