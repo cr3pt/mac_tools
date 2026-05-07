@@ -18,6 +18,20 @@ from .admin_extra import router as admin_extra_router
 app.include_router(admin_router, prefix='/admin')
 app.include_router(admin_extra_router, prefix='/admin')
 
+# background maintenance (prune old logs/audit)
+try:
+    from .. import maintenance
+    @app.on_event('startup')
+    async def _start_maintenance():
+        try:
+            loop = asyncio.get_event_loop()
+            loop.create_task(maintenance.prune_loop())
+        except Exception:
+            pass
+except Exception:
+    # maintenance optional
+    pass
+
 @app.get('/')
 async def index():
     return FileResponse('browser_ui/index.html')

@@ -16,6 +16,9 @@ try:
         # log rotation
         LOG_ROTATE_MAX_BYTES: int = 5 * 1024 * 1024
         LOG_ROTATE_BACKUPS: int = 3
+        # retention (days)
+        LOG_RETENTION_DAYS: int = 30
+        AUDIT_RETENTION_DAYS: int = 90
         # audit DB
         AUDIT_DB_PATH: str = 'data/tasks_audit.sqlite3'
 
@@ -37,6 +40,8 @@ except Exception:
         REDIS_URL = os.getenv('REDIS_URL')
         LOG_ROTATE_MAX_BYTES = int(os.getenv('LOG_ROTATE_MAX_BYTES', str(5 * 1024 * 1024)))
         LOG_ROTATE_BACKUPS = int(os.getenv('LOG_ROTATE_BACKUPS', '3'))
+        LOG_RETENTION_DAYS = int(os.getenv('LOG_RETENTION_DAYS', '30'))
+        AUDIT_RETENTION_DAYS = int(os.getenv('AUDIT_RETENTION_DAYS', '90'))
         AUDIT_DB_PATH = os.getenv('AUDIT_DB_PATH', 'data/tasks_audit.sqlite3')
 
     settings = Settings()
@@ -51,6 +56,8 @@ except Exception:
         VIRUSTOTAL_API_KEY = os.getenv('VIRUSTOTAL_API_KEY')
         OTX_API_KEY = os.getenv('OTX_API_KEY')
         REDIS_URL = os.getenv('REDIS_URL')
+        LOG_RETENTION_DAYS = int(os.getenv('LOG_RETENTION_DAYS', '30'))
+        AUDIT_RETENTION_DAYS = int(os.getenv('AUDIT_RETENTION_DAYS', '90'))
 
     settings = Settings()
 
@@ -100,7 +107,7 @@ def update_settings(updates: Dict[str, Any]) -> None:
 
 def get_settings_dict() -> Dict[str, Any]:
     """Return a serializable dict of current settings."""
-    keys = ['NORIBEN_ENV','DATABASE_URL','CELERY_BROKER','LOG_LEVEL','LOG_JSON','UPLOAD_DIR','VIRUSTOTAL_API_KEY','OTX_API_KEY']
+    keys = ['NORIBEN_ENV','DATABASE_URL','CELERY_BROKER','LOG_LEVEL','LOG_JSON','UPLOAD_DIR','VIRUSTOTAL_API_KEY','OTX_API_KEY','REDIS_URL','LOG_ROTATE_MAX_BYTES','LOG_ROTATE_BACKUPS','LOG_RETENTION_DAYS','AUDIT_RETENTION_DAYS','AUDIT_DB_PATH']
     out = {}
     for k in keys:
         out[k] = getattr(settings, k, os.getenv(k))

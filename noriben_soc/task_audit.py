@@ -72,3 +72,18 @@ def delete_task(task_id: str) -> bool:
     conn.commit()
     conn.close()
     return changed > 0
+
+
+def prune_tasks_older_than(days: int) -> int:
+    """Delete audit records that finished more than `days` days ago. Returns number deleted."""
+    from datetime import datetime, timedelta
+    cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+    init_db()
+    conn = _get_conn()
+    c = conn.cursor()
+    # Only prune tasks that have an end_time (finished)
+    c.execute('DELETE FROM tasks WHERE end_time IS NOT NULL AND end_time < ?', (cutoff,))
+    deleted = c.rowcount
+    conn.commit()
+    conn.close()
+    return deleted

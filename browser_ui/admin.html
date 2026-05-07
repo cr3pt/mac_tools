@@ -25,6 +25,7 @@
         <button id="revoke-btn" type="button" onclick="revokeToken()" class="px-4 py-2 bg-indigo-600 rounded hidden">Revoke Token</button>
         <a id="download-link" class="px-4 py-2 bg-slate-700 rounded text-xs hidden">Download Log</a>
         <button type="button" onclick="listTasks()" class="px-4 py-2 bg-slate-600 rounded">List Tasks</button>
+        <button type="button" onclick="pruneNow()" class="px-4 py-2 bg-amber-600 rounded">Prune Old Logs</button>
       </div>
     </form>
 
@@ -120,6 +121,14 @@ async function revokeToken(){
   document.getElementById('out').textContent += '\nRevoke result: '+JSON.stringify(j);
   document.getElementById('revoke-btn').classList.add('hidden');
   window.currentAdminToken = null;
+}
+
+async function pruneNow(){
+  if(!confirm('Prune old logs and audit records now?')) return;
+  const r = await fetch('/admin/run-setup/prune',{method:'POST'});
+  const j = await r.json();
+  document.getElementById('out').textContent += '\nPrune result: '+JSON.stringify(j);
+  listTasks();
 }
 
 load();

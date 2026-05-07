@@ -46,3 +46,15 @@ async def export_tasks(user: str = Depends(admin_required)):
     from fastapi.responses import StreamingResponse
     buf.seek(0)
     return StreamingResponse(buf, media_type='text/csv', headers={'Content-Disposition': 'attachment; filename="tasks_audit.csv"'})
+
+
+@router.post('/run-setup/prune')
+async def prune_now(user: str = Depends(admin_required), days: int = None):
+    """Trigger immediate pruning of logs and audit records. If `days` provided, use it for both logs and audit."""
+    from .. import maintenance
+    from ..config import settings as cfg
+    d_logs = int(days) if days is not None else int(getattr(cfg, 'LOG_RETENTION_DAYS', 30))
+    d_audit = int(days) if days is not None else int(getattr(cfg, 'AUDIT_RETENTION_DAYS', 90))
+    removed_logs = maintenance.prune_logs_older_than(d_logs)
+    removed_db = maintenance.prune_audit_older_than(d_audit)
+    return {'ok': True, 'removed_logs': removed_logs, 'removed_db': removed_db}
