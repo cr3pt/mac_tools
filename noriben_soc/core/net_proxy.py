@@ -163,6 +163,24 @@ def _record_blocked():
     if PROM_METRICS:
         PROXY_BLOCKED.inc()
 
+def get_status() -> dict:
+    """Return runtime status and simple counters for admin endpoints."""
+    return {
+        'running': _server is not None,
+        'bind_host': BIND_HOST,
+        'port': PORT,
+        'allowlist': ALLOWLIST,
+        'allowed_count': _allowed_count,
+        'blocked_count': _blocked_count,
+        'prometheus_enabled': PROM_METRICS,
+    }
+
+def reset_counters():
+    global _allowed_count, _blocked_count
+    _allowed_count = 0
+    _blocked_count = 0
+    # prometheus counters cannot be reset easily; ignore
+
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     try:
