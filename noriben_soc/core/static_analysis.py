@@ -45,7 +45,41 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def analyze_file(path: str, strings_limit: int = 50) -> dict:
+def _extract_iocs_from_strings(strings):
+    iocs = {'urls': [], 'domains': [], 'ips': [], 'emails': [], 'registry': [], 'mutexes': []}
+    url_re = re.compile(r'https?://[^\s\'"<>]+', re.IGNORECASE)
+    ip_re = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b')
+    # domain regex simplified
+    domain_re = re.compile(r'\b(?:[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b', re.IGNORECASE)
+    email_re = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
+    reg_re = re.compile(r'(?:HKEY_LOCAL_MACHINE|HKLM|HKEY_CURRENT_USER|HKCU)[\\/][^\s\t\n\r]+', re.IGNORECASE)
+    mutex_re = re.compile(r'(?:Global\\|Local\\)?[A-Za-z0-9_\-]{4,}')
+
+    seen = set()
+    for s in strings:
+        for m in url_re.findall(s):
+            if m not in seen:
+                iocs['urls'].append(m); seen.add(m)
+        for m in email_re.findall(s):
+            if m not in seen:
+                iocs['emails'].append(m); seen.add(m)
+        for m in ip_re.findall(s):
+            if m not in seen:
+                iocs['ips'].append(m); seen.add(m)
+        for m in domain_re.findall(s):
+            if m not in seen:
+                iocs['domains'].append(m.lower()); seen.add(m.lower())
+        for m in reg_re.findall(s):
+            if m not in seen:
+                iocs['registry'].append(m); seen.add(m)
+        # mutex heuristic: looks like Global\Name or plain token
+        for m in mutex_re.findall(s):
+            if len(m) >= 4 and m not in seen:
+                iocs['mutexes'].append(m); seen.add(m)
+    return iocs
+
+
+def analyze_file(path: str, strings_limit: int = 50, report: bool = True, report_dir: str = 'results/reports') -> dict:
     """Analyze a file for static indicators: type (PE/ELF/other), entropy, strings, imphash (PE), sections, yara matches when possible.
 
     Returns a dict with keys:
@@ -143,32 +177,89 @@ def analyze_file(path: str, strings_limit: int = 50) -> dict:
         except Exception:
             pass
 
-    # YARA matching (scan repository rules if available)
+    # YARA matching: prefer compiled in-memory rules from rules_manager
     try:
-        import yara
-        rules_dir = Path('rules/yara')
-        if rules_dir.exists():
-            for rf in rules_dir.iterdir():
-                if rf.is_file() and rf.suffix in ('.yar', '.yara', '.txt'):
+        from .. import rules_manager
+        compiled = rules_manager.get_compiled_yara()
+        if compiled is not None:
+            try:
+                matches = compiled.match(data=data)
+                for m in matches:
                     try:
-                        r = yara.compile(str(rf))
-                        matches = r.match(data=data)
-                        for m in matches:
-                            try:
-                                meta = dict(m.meta) if getattr(m, 'meta', None) else {}
-                            except Exception:
-                                meta = {}
-                            out['yara_matches'].append({'rule': m.rule, 'meta': meta})
+                        meta = dict(m.meta) if getattr(m, 'meta', None) else {}
                     except Exception:
-                        # try match without compile
+                        meta = {}
+                    out['yara_matches'].append({'rule': m.rule, 'meta': meta})
+            except Exception:
+                pass
+        else:
+            # fallback to on-disk per-file compile
+            import yara
+            rules_dir = Path('rules/yara')
+            if rules_dir.exists():
+                for rf in rules_dir.iterdir():
+                    if rf.is_file() and rf.suffix in ('.yar', '.yara', '.txt'):
                         try:
-                            rules = yara.compile(filepath=str(rf))
-                            for m in rules.match(data=data):
-                                out['yara_matches'].append({'rule': m.rule, 'meta': dict(getattr(m, 'meta', {}))})
+                            r = yara.compile(str(rf))
+                            matches = r.match(data=data)
+                            for m in matches:
+                                try:
+                                    meta = dict(m.meta) if getattr(m, 'meta', None) else {}
+                                except Exception:
+                                    meta = {}
+                                out['yara_matches'].append({'rule': m.rule, 'meta': meta})
                         except Exception:
-                            pass
+                            try:
+                                rules = yara.compile(filepath=str(rf))
+                                for m in rules.match(data=data):
+                                    out['yara_matches'].append({'rule': m.rule, 'meta': dict(getattr(m, 'meta', {}))})
+                            except Exception:
+                                pass
     except Exception:
-        # yara not available
+        # yara or rules_manager not available
         pass
+
+    # IOC extraction from strings
+    try:
+        iocs = _extract_iocs_from_strings(asc + wide)
+        out['iocs'] = iocs
+    except Exception:
+        out['iocs'] = {'urls': [], 'domains': [], 'ips': [], 'emails': [], 'registry': [], 'mutexes': []}
+
+    # imphash indexing
+    try:
+        if out.get('pe') and out['pe'].get('imphash'):
+            from ..core import imphash_db
+            imph = out['pe'].get('imphash')
+            imphash_db.add_imphash(imph, out['sha256'], {'filename': out['filename']})
+    except Exception:
+        pass
+
+    # generate report if requested
+    if report:
+        try:
+            rep = {
+                'analysis': out,
+            }
+            rep_dir = Path(report_dir)
+            rep_dir.mkdir(parents=True, exist_ok=True)
+            jsonp = rep_dir / f"{out['sha256']}.json"
+            with open(jsonp, 'w', encoding='utf-8') as jf:
+                import json
+                jf.write(json.dumps(rep, indent=2))
+            # simple HTML summary
+            htmlp = rep_dir / f"{out['sha256']}.html"
+            with open(htmlp, 'w', encoding='utf-8') as hf:
+                hf.write('<html><body>')
+                hf.write(f"<h1>Report for {out['filename']} ({out['sha256']})</h1>")
+                hf.write(f"<p>Size: {out['size']} bytes, Entropy: {out['entropy']:.2f}</p>")
+                hf.write('<h2>IOCs</h2>')
+                for k,v in out['iocs'].items():
+                    hf.write(f"<h3>{k}</h3><pre>{v}</pre>")
+                hf.write('<h2>YARA Matches</h2>')
+                hf.write(f"<pre>{out['yara_matches']}</pre>")
+                hf.write('</body></html>')
+        except Exception:
+            pass
 
     return out

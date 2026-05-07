@@ -7,9 +7,11 @@ def test_analyze_text_file():
     with tempfile.NamedTemporaryFile('wb', delete=False) as tf:
         tf.write(b'Hello world\nThis is a test file.\nhttp://example.com\nMZ')
         path = tf.name
-    res = analyze_file(path)
+    res = analyze_file(path, report=False)
     assert 'filename' in res
     assert res['size'] > 0
     assert 'entropy' in res
     assert isinstance(res['strings'], list)
     assert 'yara_matches' in res
+    assert 'iocs' in res
+    assert 'sha256' in res
