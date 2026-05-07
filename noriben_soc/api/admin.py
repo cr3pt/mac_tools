@@ -15,7 +15,35 @@ security = HTTPBasic()
 router = APIRouter()
 
 
-def admin_required(creds: HTTPBasicCredentials = Depends(security)):
+from fastapi import Request
+
+
+def _rate_limit_check(request: Request):
+    # Simple in-memory rate limiter per IP
+    ip = request.client.host if request.client else 'unknown'
+    from time import time
+    bucket = _rate_buckets.get(ip)
+    now = int(time())
+    per_min = int(getattr(settings, 'RATE_LIMIT_PER_MINUTE', 120))
+    if not bucket:
+        _rate_buckets[ip] = {'t': now, 'count': 1}
+        return True
+    if now - bucket['t'] >= 60:
+        _rate_buckets[ip] = {'t': now, 'count': 1}
+        return True
+    if bucket['count'] >= per_min:
+        return False
+    bucket['count'] += 1
+    return True
+
+
+def admin_required(request: Request, creds: HTTPBasicCredentials = Depends(security)):
+    # localhost binding enforcement
+    if getattr(settings, 'ADMIN_BIND_LOCAL_ONLY', True):
+        ip = request.client.host if request.client else ''
+        if ip not in ('127.0.0.1', '::1', 'localhost') and not getattr(settings, 'ALLOW_ADMIN_REMOTE', False):
+            raise HTTPException(status_code=403, detail='Admin access restricted to localhost')
+
     user = getattr(settings, 'ADMIN_USER', None) or os.getenv('ADMIN_USER')
     pwd = getattr(settings, 'ADMIN_PASS', None) or os.getenv('ADMIN_PASS')
     if not user or not pwd:
@@ -24,7 +52,17 @@ def admin_required(creds: HTTPBasicCredentials = Depends(security)):
     is_pass = secrets.compare_digest(creds.password, pwd)
     if not (is_user and is_pass):
         raise HTTPException(status_code=401, detail='Unauthorized', headers={'WWW-Authenticate': 'Basic'})
+
+    # rate limit
+    ok = _rate_limit_check(request)
+    if not ok:
+        raise HTTPException(status_code=429, detail='Too many requests')
     return True
+
+
+# simple in-memory buckets
+_rate_buckets = {}
+
 
 
 @router.get('/', dependencies=[Depends(admin_required)])

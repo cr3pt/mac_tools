@@ -18,6 +18,19 @@ from .admin_extra import router as admin_extra_router
 app.include_router(admin_router, prefix='/admin')
 app.include_router(admin_extra_router, prefix='/admin')
 
+# Optional metrics endpoint
+try:
+    from noriben_soc import metrics as metrics_mod
+    if getattr(metrics_mod, 'PROMETHEUS_AVAILABLE', False) and getattr(metrics_mod, 'registry', None) is not None:
+        @app.get('/metrics')
+        async def metrics():
+            from fastapi.responses import PlainTextResponse
+            data = metrics_mod.registry.generate_latest()
+            return PlainTextResponse(data, media_type='text/plain; version=0.0.4')
+except Exception:
+    pass
+
+
 # background maintenance (prune old logs/audit)
 try:
     from .. import maintenance
@@ -39,18 +52,41 @@ async def index():
 
 @app.post('/upload')
 async def upload(file: UploadFile = File(...)):
-    # ensure upload dir exists
-    upload_dir = Path(settings.UPLOAD_DIR)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    suffix = Path(file.filename).suffix or ''
-    tmp = tempfile.NamedTemporaryFile(delete=False, dir=str(upload_dir), suffix=suffix)
+    # increment metrics if available
     try:
-        tmp.write(await file.read())
-        tmp.flush()
-    finally:
-        tmp.close()
-    logger.info('Received upload %s -> %s', file.filename, tmp.name)
-    job = run_analysis_task.delay(tmp.name, file.filename)
+        from .. import metrics
+        if getattr(metrics, 'uploads', None) is not None:
+            metrics.uploads.inc()
+    except Exception:
+        pass
+    # ensure upload and quarantine dir exist
+    upload_dir = Path(settings.UPLOAD_DIR)
+    quarantine = Path(getattr(settings, 'QUARANTINE_DIR', 'quarantine'))
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    quarantine.mkdir(parents=True, exist_ok=True)
+    # size check
+    content = await file.read()
+    max_size = int(getattr(settings, 'MAX_UPLOAD_SIZE', 50 * 1024 * 1024))
+    if len(content) > max_size:
+        raise HTTPException(status_code=413, detail=f'File too large (max {max_size} bytes)')
+    # optional MIME check (python-magic)
+    mime = None
+    try:
+        import magic
+        mime = magic.from_buffer(content, mime=True)
+    except Exception:
+        mime = None
+    # write to quarantine first
+    suffix = Path(file.filename).suffix or ''
+    qpath = quarantine / (Path(file.filename).name)
+    qpath.write_bytes(content)
+    logger.info('Received upload %s -> quarantine %s mime=%s', file.filename, qpath, mime)
+    # move to upload dir and queue for analysis
+    dest = upload_dir / qpath.name
+    qpath.replace(dest)
+    # enqueue
+    from ..tasks import run_analysis_task
+    job = run_analysis_task.delay(str(dest), file.filename)
     return {'job_id': str(job.id), 'filename': file.filename, 'status': 'queued'}
 
 

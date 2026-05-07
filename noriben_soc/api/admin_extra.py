@@ -112,7 +112,29 @@ async def upload_yara(file: 'UploadFile' , user: str = Depends(admin_required)):
     dest = p / name
     with open(dest, 'wb') as wf:
         shutil.copyfileobj(file.file, wf)
-    return {'ok': True, 'path': str(dest)}
+    # validate yara syntax if possible
+    valid = False
+    try:
+        import yara
+        yara.compile(str(dest))
+        valid = True
+    except Exception:
+        valid = False
+    # write metadata
+    meta = {'filename': dest.name, 'valid': valid}
+    try:
+        import json
+        with open(str(dest)+'.meta','w',encoding='utf-8') as mf:
+            mf.write(json.dumps(meta))
+    except Exception:
+        pass
+    # reload rules
+    try:
+        from .. import rules_manager
+        rules_manager.reload_rules()
+    except Exception:
+        pass
+    return {'ok': True, 'path': str(dest), 'valid': valid}
 
 
 @router.post('/rules/yara/from_url')
@@ -152,13 +174,28 @@ async def upload_sigma(file: 'UploadFile' , user: str = Depends(admin_required))
     dest = p / name
     with open(dest, 'wb') as wf:
         shutil.copyfileobj(file.file, wf)
-    # try reload
+    # validate YAML if possible
+    valid = False
+    try:
+        import yaml
+        with open(dest, 'r', encoding='utf-8') as rf:
+            yaml.safe_load(rf)
+        valid = True
+    except Exception:
+        valid = False
+    meta = {'filename': dest.name, 'valid': valid}
+    try:
+        import json
+        with open(str(dest)+'.meta','w',encoding='utf-8') as mf:
+            mf.write(json.dumps(meta))
+    except Exception:
+        pass
     try:
         from .. import rules_manager
         rules_manager.reload_rules()
     except Exception:
         pass
-    return {'ok': True, 'path': str(dest)}
+    return {'ok': True, 'path': str(dest), 'valid': valid}
 
 
 @router.post('/rules/sigma/from_url')
@@ -226,6 +263,13 @@ async def reload_rules(user: str = Depends(admin_required)):
     try:
         from .. import rules_manager
         res = rules_manager.reload_rules()
+        # metrics
+        try:
+            from .. import metrics
+            if getattr(metrics, 'rules_loaded', None) is not None:
+                metrics.rules_loaded.inc()
+        except Exception:
+            pass
         return {'ok': True, 'result': res}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

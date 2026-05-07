@@ -21,6 +21,17 @@ try:
         AUDIT_RETENTION_DAYS: int = 90
         # audit DB
         AUDIT_DB_PATH: str = 'data/tasks_audit.sqlite3'
+        # security & sandboxing
+        ADMIN_BIND_LOCAL_ONLY: bool = True
+        ALLOW_ADMIN_REMOTE: bool = False
+        MAX_UPLOAD_SIZE: int = 50 * 1024 * 1024  # 50 MB
+        QUARANTINE_DIR: str = 'quarantine'
+        RULES_SIGNATURE_KEY_PATH: str = ''  # path to public key for rule signature verification (optional)
+        PROMETHEUS_ENABLED: bool = False
+        RATE_LIMIT_PER_MINUTE: int = 120
+        NORIBEN_DISABLE_EXTERNAL: bool = False
+        EPHEMERAL_VM: bool = True
+        VM_SNAPSHOT_COPY: bool = False
 
         class Config:
             env_file = '.env'
